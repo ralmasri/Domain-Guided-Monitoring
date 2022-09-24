@@ -26,7 +26,7 @@ endif
 	@chmod +x ./${CONDA_DIR}/${CONDA_SH}
 	@./${CONDA_DIR}/${CONDA_SH} -b -u -p ./${CONDA_DIR}/miniconda3/ > /dev/null
 	@echo "Initializing conda environment..."
-	@./${CONDA_DIR}/miniconda3/bin/conda env create -q --force -f environment.yml > /dev/null
+	@./${CONDA_DIR}/miniconda3/bin/conda env create --name ${CONDA_ENV_NAME} -q --force -f environment.yml > /dev/null
 	@echo "Finished!"
 
 install_mimic:
@@ -77,4 +77,18 @@ run_huawei:
 			--experimentconfig_multilabel_classification \
 			--sequenceconfig_flatten_y \
 			${ARGS} ; \
-	done ; \
+	done ; \ 
+
+run_huawei_causal:
+	echo "Starting experiment for huawei_logs with causal knowledge ....." ; \
+	./${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin/python main.py \
+		--experimentconfig_sequence_type huawei_logs \
+		--experimentconfig_model_type causal \
+		--huaweipreprocessorconfig_min_causality 0.01
+		--sequenceconfig_x_sequence_column_name fine_log_cluster_template \
+		--sequenceconfig_y_sequence_column_name attributes \
+		--sequenceconfig_max_window_size 10 \
+		--sequenceconfig_min_window_size 10 \
+		--experimentconfig_multilabel_classification \
+		--sequenceconfig_flatten_y \
+		${ARGS} ; \
