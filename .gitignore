@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/vim,code,python,pycharm,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=vim,code,python,pycharm,jupyternotebooks
 
+## Misc ##
+.tmp
+
 ### Code ###
 .vscode/*
 !.vscode/tasks.json
