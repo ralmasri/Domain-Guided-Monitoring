@@ -1,5 +1,5 @@
 from unicodedata import digit
-import dataclass_cli
+# import dataclass_cli
 import dataclasses
 import logging
 import pandas as pd
@@ -36,7 +36,7 @@ def _convert_to_3digit_icd9(dxStr: str):
             return dxStr
 
 
-@dataclass_cli.add
+# @dataclass_cli.add
 @dataclasses.dataclass
 class MimicPreprocessorConfig:
     admission_file: Path = Path("data/ADMISSIONS.csv")

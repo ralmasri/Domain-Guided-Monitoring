@@ -1,4 +1,4 @@
-import dataclass_cli
+# import dataclass_cli
 import dataclasses
 import pandas as pd
 from pathlib import Path
@@ -6,7 +6,7 @@ from tqdm import tqdm
 from .base import Preprocessor
 
 
-@dataclass_cli.add
+# @dataclass_cli.add
 @dataclasses.dataclass
 class C24PreprocessorConfig:
     grouped_df_pkl: Path = Path("data/grouped_df11.pkl")

@@ -1,10 +1,10 @@
-import dataclass_cli
+# import dataclass_cli
 import dataclasses
 from pathlib import Path
 from typing import List
 
 
-@dataclass_cli.add
+# @dataclass_cli.add
 @dataclasses.dataclass
 class KnowledgeConfig:
     add_causality_prefix: bool = False
