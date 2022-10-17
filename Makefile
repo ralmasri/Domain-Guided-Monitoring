@@ -7,9 +7,9 @@
 # make run_mimic 		# executes main.py within the conda environment for all knowledge types on mimic dataset
 # make run_huawei		# executes main.py within the conda environment for all knowledge types on huawei dataset
 
-CONDA_ENV_NAME = healthcare-aiops
-CONDA_URL = https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-CONDA_SH = Miniconda3-latest-Linux-x86_64.sh
+CONDA_ENV_NAME = aiops
+CONDA_URL = https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Linux-x86_64.sh
+CONDA_SH = Miniconda3-py38_4.12.0-Linux-x86_64.sh
 CONDA_DIR = .tmp
 
 DATA_DIR = data
@@ -26,7 +26,7 @@ endif
 	@chmod +x ./${CONDA_DIR}/${CONDA_SH}
 	@./${CONDA_DIR}/${CONDA_SH} -b -u -p ./${CONDA_DIR}/miniconda3/ > /dev/null
 	@echo "Initializing conda environment..."
-	@./${CONDA_DIR}/miniconda3/bin/conda env create --name ${CONDA_ENV_NAME} -q --force -f environment.yml > /dev/null
+	@./${CONDA_DIR}/miniconda3/bin/conda env create --name ${CONDA_ENV_NAME} --file environment.yml > /dev/null
 	@echo "Finished!"
 
 install_mimic:
