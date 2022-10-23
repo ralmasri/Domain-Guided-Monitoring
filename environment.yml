@@ -11,6 +11,7 @@ dependencies:
   # Plotting
   - conda-forge::nbformat
   - plotly::plotly
+  - conda-forge::pygraphviz
   - seaborn
   - jupyter
   - notebook
