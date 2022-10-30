@@ -315,13 +315,12 @@ tests/mlruns/**
 # Tensorflow output
 *.tsv
 # notebook output
-notebooks/*.html
+# notebooks/*.html
 notebooks/*.png
 notebooks/*.csv
 notebooks/*.json
 notebooks/exploration/**
 **.png
-**.html
 **.pkl
 **.csv
 **.txt
