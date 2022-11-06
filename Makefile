@@ -13,7 +13,7 @@ CONDA_SH = Miniconda3-py38_4.12.0-Linux-x86_64.sh
 CONDA_DIR = .tmp
 
 DATA_DIR = data
-KNOWLEDGE_TYPES = simple gram text causal
+KNOWLEDGE_TYPES = simple gram text causal_heuristic causal_score causal_constraint
 
 install:
 ifneq (,$(wildcard ${CONDA_DIR}))
@@ -38,8 +38,8 @@ install_mimic:
 
 server:
 	@echo "Starting MLFlow UI at port 5000"
-	PATH="${PATH}:$(shell pwd)/${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin" ; \
-	./${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin/mlflow server --gunicorn-opts -t180
+	PATH="${PATH}:$(shell pwd)/${CONDA_DIR}/miniconda3/bin" ; \
+	./${CONDA_DIR}/miniconda3/bin/mlflow server --gunicorn-opts -t180
 
 notebook:
 	@echo "Starting Jupyter Notebook at port 8888"
@@ -66,7 +66,7 @@ run_mimic:
 run_huawei:
 	for knowledge_type in ${KNOWLEDGE_TYPES} ; do \
 		echo "Starting experiment for huawei_logs with knowledge type " $$knowledge_type "....." ; \
-		./${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin/python main.py \
+		./${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin/python3.8 main.py \
 			--experimentconfig_sequence_type huawei_logs \
 			--experimentconfig_model_type $$knowledge_type \
 			--huaweipreprocessorconfig_min_causality 0.01
@@ -81,10 +81,11 @@ run_huawei:
 
 run_huawei_causal:
 	echo "Starting experiment for huawei_logs with causal knowledge ....." ; \
-	./${CONDA_DIR}/miniconda3/envs/${CONDA_ENV_NAME}/bin/python main.py \
+	./${CONDA_DIR}/miniconda3/bin/python3.8 main.py \
 		--experimentconfig_sequence_type huawei_logs \
-		--experimentconfig_model_type causal \
-		--huaweipreprocessorconfig_min_causality 0.01
+		--experimentconfig_model_type causal_$(type) \
+		--experimentconfig_max_data_size 100 \
+		--huaweipreprocessorconfig_min_causality 0.01 \
 		--sequenceconfig_x_sequence_column_name fine_log_cluster_template \
 		--sequenceconfig_y_sequence_column_name attributes \
 		--sequenceconfig_max_window_size 10 \
