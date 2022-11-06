@@ -26,15 +26,13 @@ class ExperimentRunner:
         tf.random.set_seed(self.config.tensorflow_seed)
         random.seed(self.config.random_seed)
         sequence_df = self._load_sequences()
-        if self.config.max_data_size > 0 and self.config.max_data_size < len(
-            sequence_df
-        ):
+        if self.config.max_data_size > 0 and self.config.max_data_size < sequence_df.shape[0]:
             logging.info(
                 "Only using first %d rows of sequence_df with %d rows",
                 self.config.max_data_size,
-                len(sequence_df),
+                sequence_df.shape[0],
             )
-            sequence_df = sequence_df[0 : self.config.max_data_size]
+            sequence_df = sequence_df.head(self.config.max_data_size)
 
         metadata = self._collect_sequence_metadata(sequence_df)
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
@@ -288,8 +286,18 @@ class ExperimentRunner:
             model = models.DescriptionPaperModel()
             return (description_knowledge, model)
 
-        elif self.config.model_type == "causal":
-            causality_knowledge = self._load_causal_knowledge(metadata)
+        elif self.config.model_type == "causal_heuristic":
+            causality_knowledge = self._load_causal_heuristic_knowledge(metadata)
+            model = models.CausalityModel()
+            return (causality_knowledge, model)
+
+        elif self.config.model_type == "causal_score":
+            causality_knowledge = self._load_causal_score_knowledge(metadata)
+            model = models.CausalityModel()
+            return (causality_knowledge, model)
+
+        elif self.config.model_type == "causal_constraint":
+            causality_knowledge = self._load_causal_constraint_knowledge(metadata)
             model = models.CausalityModel()
             return (causality_knowledge, model)
 
@@ -319,7 +327,7 @@ class ExperimentRunner:
                 hierarchy_knowledge = self._load_hierarchy_knowledge(metadata)
                 combined_knowledge.add_knowledge(hierarchy_knowledge)
             elif knowledge_type == "causal":
-                causal_knowledge = self._load_causal_knowledge(metadata)
+                causal_knowledge = self._load_causal_heuristic_knowledge(metadata)
                 combined_knowledge.add_knowledge(causal_knowledge)
             elif knowledge_type == "text":
                 text_knowledge = self._load_description_knowledge(metadata)
@@ -381,7 +389,37 @@ class ExperimentRunner:
 
         return file_knowledge
 
-    def _load_causal_knowledge(
+    def _load_causal_score_knowledge(
+        self, metadata: sequences.SequenceMetadata
+    ) -> knowledge.CausalityKnowledge:
+        causality_preprocessor: preprocessing.Preprocessor
+        if self.config.sequence_type == "huawei_logs":
+            causality_preprocessor = preprocessing.ConcurrentAggregatedLogsTimeSeriesPreprocessor(
+                config=preprocessing.HuaweiPreprocessorConfig(),
+            )
+            causality_df = causality_preprocessor.load_data(algorithm='score', max_data_size=self.config.max_data_size)
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
+
+    def _load_causal_constraint_knowledge(
+        self, metadata: sequences.SequenceMetadata
+    ) -> knowledge.CausalityKnowledge:
+        causality_preprocessor: preprocessing.Preprocessor
+        if self.config.sequence_type == "huawei_logs":
+            causality_preprocessor = preprocessing.ConcurrentAggregatedLogsTimeSeriesPreprocessor(
+                config=preprocessing.HuaweiPreprocessorConfig(),
+            )
+            causality_df = causality_preprocessor.load_data(algorithm='constraint', max_data_size=self.config.max_data_size)
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
+
+    def _load_causal_heuristic_knowledge(
         self, metadata: sequences.SequenceMetadata
     ) -> knowledge.CausalityKnowledge:
         causality_preprocessor: preprocessing.Preprocessor
@@ -389,7 +427,7 @@ class ExperimentRunner:
             causality_preprocessor = preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor(
                 config=preprocessing.HuaweiPreprocessorConfig(),
             )
-            causality_df = causality_preprocessor.load_data()
+            causality_df = causality_preprocessor.load_data(self.config.max_data_size)
             causality = knowledge.CausalityKnowledge(
                 config=knowledge.KnowledgeConfig(),
             )
@@ -495,14 +533,6 @@ class ExperimentRunner:
     def _collect_sequence_metadata(
         self, sequence_df: pd.DataFrame
     ) -> sequences.SequenceMetadata:
-        if self.config.max_data_size > 0:
-            logging.debug(
-                "Using subset of length %d instead total df of length %d",
-                self.config.max_data_size,
-                len(sequence_df),
-            )
-            sequence_df = sequence_df[0 : self.config.max_data_size]
-
         transformer = sequences.load_sequence_transformer()
         if not transformer.config.flatten_y:
             self.multilabel_classification = False

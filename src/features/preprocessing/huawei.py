@@ -1,5 +1,7 @@
 from src.features.preprocessing.huawei_traces import HuaweiTracePreprocessor
-# import dataclass_cli
+from src.features.preprocessing.evdef import EventDefinitionMap
+from src.features.preprocessing.ts_transformation import TimeSeriesTransformer, TimeSeriesTransformerConfig
+import dataclass_cli
 import dataclasses
 import logging
 import pandas as pd
@@ -12,9 +14,11 @@ from .base import Preprocessor
 from collections import Counter
 from .drain import Drain, DrainParameters
 import numpy as np
+from cdt.causality.graph import PC, GES
+import networkx as nx
 
 
-# @dataclass_cli.add
+@dataclass_cli.add
 @dataclasses.dataclass
 class HuaweiPreprocessorConfig:
     aggregated_log_file: Path = Path("data/logs_aggregated_concurrent.csv")
@@ -640,9 +644,13 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self, max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data().fillna("")
+
+        if max_data_size > 0 and max_data_size < huawei_df.shape[0]:
+            huawei_df = huawei_df.head(max_data_size)
+        
         relevant_columns = set(
             [
                 x
@@ -716,3 +724,60 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
             previous_row = row
         return causality
 
+
+class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
+    def __init__(
+        self,
+        config: HuaweiPreprocessorConfig,
+    ):
+        self.config = config
+        self.algorithms = {
+            'constraint': lambda df: PC(CItest = 'binary').predict(df),
+            'score': lambda df: GES().predict(df)
+        }
+
+    def load_data(self, algorithm='score', max_data_size=-1) -> pd.DataFrame:
+        preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
+        huawei_df = preprocessor._load_log_only_data().fillna("")
+
+        if max_data_size > 0 and max_data_size < huawei_df.shape[0]:
+            huawei_df = huawei_df.head(max_data_size)
+        
+        relevant_columns = set(
+            [
+                x
+                for x in preprocessor.relevant_columns
+                if not self.config.log_only_causality or "log" in x
+            ] 
+            + 
+            ['@timestamp']
+        )
+
+        transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig())
+        transformed_df, evmap = transformer.transform_time_series_to_events(huawei_df, relevant_columns)
+
+        causality_records = self._generate_causality_records(transformed_df, evmap, algorithm)
+
+        return (
+            pd.DataFrame.from_records(causality_records)
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
+
+    def _generate_causality_records(self, transformed_df: pd.DataFrame, evmap: EventDefinitionMap, algorithm: str):
+        print(f'Generating causality with {algorithm} algorithm...')
+        output: nx.Graph = self.algorithms[algorithm](transformed_df)
+        causality_records = []
+        for edge in list(output.edges()):
+            from_eid, to_eid = edge[0], edge[1]
+            from_evdef = evmap.get_evdef(from_eid)
+            to_evdef = evmap.get_evdef(to_eid)
+            causality_records.append(
+                {
+                    "parent_id": from_evdef.type + '#' + str(from_evdef.value),
+                    "parent_name": from_evdef.value,
+                    "child_id": to_evdef.type + '#' + str(to_evdef.value),
+                    "child_name": to_evdef.value,
+                }
+            )
+        return causality_records
