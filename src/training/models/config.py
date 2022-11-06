@@ -1,9 +1,9 @@
-# import dataclass_cli
+import dataclass_cli
 import dataclasses
 from typing import List
 
 
-# @dataclass_cli.add
+@dataclass_cli.add
 @dataclasses.dataclass
 class ModelConfig:
     rnn_type: str = "lstm"
@@ -34,7 +34,7 @@ class ModelConfig:
     )
 
 
-# @dataclass_cli.add
+@dataclass_cli.add
 @dataclasses.dataclass
 class TextualPaperModelConfig:
     num_filters: int = 16

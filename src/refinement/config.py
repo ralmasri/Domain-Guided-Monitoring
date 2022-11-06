@@ -1,9 +1,9 @@
-# import dataclass_cli
+import dataclass_cli
 import dataclasses
 from pathlib import Path
 
 
-# @dataclass_cli.add
+@dataclass_cli.add
 @dataclasses.dataclass
 class RefinementConfig:
     num_refinements: int = 1

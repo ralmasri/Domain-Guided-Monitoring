@@ -1,9 +1,9 @@
-# import dataclass_cli
+import dataclass_cli
 import dataclasses
 from typing import List
 
 
-# @dataclass_cli.add
+@dataclass_cli.add
 @dataclasses.dataclass
 class SequenceConfig:
     test_percentage: float = 0.1  # how much of the data should be used for testing
