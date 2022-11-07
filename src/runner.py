@@ -25,15 +25,7 @@ class ExperimentRunner:
         logging.info("Starting run %s", self.run_id)
         tf.random.set_seed(self.config.tensorflow_seed)
         random.seed(self.config.random_seed)
-        sequence_df = self._load_sequences()
-        if self.config.max_data_size > 0 and self.config.max_data_size < sequence_df.shape[0]:
-            logging.info(
-                "Only using first %d rows of sequence_df with %d rows",
-                self.config.max_data_size,
-                sequence_df.shape[0],
-            )
-            sequence_df = sequence_df.head(self.config.max_data_size)
-
+        sequence_df = self._load_sequences(self.config.max_data_size)
         metadata = self._collect_sequence_metadata(sequence_df)
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
@@ -497,7 +489,7 @@ class ExperimentRunner:
                 + str(self.config.sequence_type)
             )
 
-    def _load_sequences(self) -> pd.DataFrame:
+    def _load_sequences(self, max_data_size=-1) -> pd.DataFrame:
         sequence_preprocessor: preprocessing.Preprocessor
 
         if self.config.sequence_type == "mimic":
@@ -514,7 +506,7 @@ class ExperimentRunner:
                 huawei_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
-            return sequence_preprocessor.load_data()
+            return sequence_preprocessor.load_data(max_data_size=max_data_size)
         elif self.config.sequence_type == "c24":
             c24_config = preprocessing.C24PreprocessorConfig()
             sequence_preprocessor = preprocessing.C24FraudPreprocessor(

@@ -88,12 +88,12 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         if self.config.use_trace_data:
             self.relevant_columns.update(self.config.relevant_trace_columns)
 
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self, max_data_size=-1) -> pd.DataFrame:
         if self.config.aggregate_per_trace:
             return self._load_data_per_trace()
         elif self.config.aggregate_per_max_number > 0:
             log_only_data = (
-                self._load_log_only_data()
+                self._load_log_only_data(max_data_size)
                 .sort_values(by="timestamp")
                 .reset_index(drop=True)
                 .reset_index(drop=False)
@@ -104,7 +104,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             return self._aggregate_per(log_only_data, aggregation_column="grouper")
         elif len(self.config.aggregate_per_time_frequency) > 0:
             log_only_data = (
-                self._load_log_only_data()
+                self._load_log_only_data(max_data_size)
                 .sort_values(by="timestamp")
                 .reset_index(drop=True)
                 .reset_index(drop=False)
@@ -117,7 +117,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             )
             return aggregated_log_data[aggregated_log_data["num_events"] > 1]
         else:
-            log_only_data = self._load_log_only_data()
+            log_only_data = self._load_log_only_data(max_data_size)
             log_only_data["grouper"] = 1
             return self._aggregate_per(log_only_data, aggregation_column="grouper")
 
@@ -133,8 +133,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         )
         return aggregated_df
 
-    def _load_log_only_data(self) -> pd.DataFrame:
-        log_df = self._read_log_df()
+    def _load_log_only_data(self, max_data_size=-1) -> pd.DataFrame:
+        log_df = self._read_log_df(max_data_size=max_data_size)
         log_df = self._add_url_drain_clusters(log_df)
         for column in [x for x in log_df.columns if "log_cluster_template" in x]:
             log_df[column] = (
@@ -248,13 +248,22 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         trace_df = preprocessor.load_data()
         return trace_df
 
-    def _read_log_df(self) -> pd.DataFrame:
+    def _read_log_df(self, max_data_size=-1) -> pd.DataFrame:
         df = (
             pd.read_csv(self.config.aggregated_log_file)
             .fillna("")
             .astype(str)
             .replace(np.nan, "", regex=True)
         )
+
+        if max_data_size > 0 and max_data_size < df.shape[0]:
+            logging.info(
+                "Only using first %d rows of log_df with %d rows",
+                max_data_size,
+                df.shape[0],
+            )
+            df = df.head(max_data_size)
+
         rel_df = df[
             self.config.relevant_aggregated_log_columns
             + [self.config.log_datetime_column_name]
@@ -738,10 +747,7 @@ class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
 
     def load_data(self, algorithm='score', max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data().fillna("")
-
-        if max_data_size > 0 and max_data_size < huawei_df.shape[0]:
-            huawei_df = huawei_df.head(max_data_size)
+        huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
         
         relevant_columns = set(
             [
