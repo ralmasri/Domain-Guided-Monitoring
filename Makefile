@@ -84,7 +84,7 @@ run_huawei_causal:
 	./${CONDA_DIR}/miniconda3/bin/python3.8 main.py \
 		--experimentconfig_sequence_type huawei_logs \
 		--experimentconfig_model_type causal_$(type) \
-		--experimentconfig_max_data_size 100 \
+		--experimentconfig_max_data_size $(size) \
 		--huaweipreprocessorconfig_min_causality 0.01 \
 		--sequenceconfig_x_sequence_column_name fine_log_cluster_template \
 		--sequenceconfig_y_sequence_column_name attributes \
