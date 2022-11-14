@@ -83,13 +83,40 @@ run_huawei_causal:
 	echo "Starting experiment for huawei_logs with causal knowledge ....." ; \
 	./${CONDA_DIR}/miniconda3/bin/python3.8 main.py \
 		--experimentconfig_sequence_type huawei_logs \
-		--experimentconfig_model_type causal_$(type) \
+		--experimentconfig_model_type causal_${type} \
 		--experimentconfig_max_data_size $(size) \
+		--experimentconfig_multilabel_classification \
+		--experimentconfig_batch_size 128 \
+		--experimentconfig_n_epochs 40 \
 		--huaweipreprocessorconfig_min_causality 0.01 \
 		--sequenceconfig_x_sequence_column_name fine_log_cluster_template \
 		--sequenceconfig_y_sequence_column_name attributes \
 		--sequenceconfig_max_window_size 10 \
 		--sequenceconfig_min_window_size 10 \
-		--experimentconfig_multilabel_classification \
 		--sequenceconfig_flatten_y \
+		--modelconfig_rnn_type gru \
+		--modelconfig_rnn_dim 50 \
+		--modelconfig_embedding_dim 60 \
+		--modelconfig_attention_dim 40 \
+		${ARGS} ; \
+
+run_simple:
+	echo "Starting experiment for huawei_logs with causal knowledge ....." ; \
+	./${CONDA_DIR}/miniconda3/bin/python3.8 main.py \
+		--experimentconfig_sequence_type huawei_logs \
+		--experimentconfig_model_type simple \
+		--experimentconfig_max_data_size $(size) \
+		--experimentconfig_multilabel_classification \
+		--experimentconfig_batch_size 128 \
+		--experimentconfig_n_epochs 40 \
+		--huaweipreprocessorconfig_min_causality 0.01 \
+		--sequenceconfig_x_sequence_column_name fine_log_cluster_template \
+		--sequenceconfig_y_sequence_column_name attributes \
+		--sequenceconfig_max_window_size 10 \
+		--sequenceconfig_min_window_size 10 \
+		--sequenceconfig_flatten_y \
+		--modelconfig_rnn_type gru \
+		--modelconfig_rnn_dim 50 \
+		--modelconfig_embedding_dim 60 \
+		--modelconfig_attention_dim 40 \
 		${ARGS} ; \
