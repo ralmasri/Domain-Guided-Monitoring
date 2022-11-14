@@ -193,37 +193,38 @@ class MlflowHelper:
         valid_y_columns: List[str]=["attributes"],
         include_drain_hierarchy: bool=False,
     ) -> pd.DataFrame:
-        huawei_run_df = self.run_df[
-            (self.run_df["data_tags_sequence_type"] == "huawei_logs")
-            & (self.run_df["data_params_ModelConfigrnn_type"] == "gru")
-            & (self.run_df["data_params_SequenceConfigtest_percentage"].fillna("").astype(str) == "0.1")
-            & (self.run_df["data_params_ModelConfigbest_model_metric"] == "val_loss")
-            & (self.run_df["info_status"] == "FINISHED")
-            & (self.run_df["data_params_ModelConfigrnn_dim"] == "200")
-            & (self.run_df["data_params_ModelConfigoptimizer"].fillna("adam") == "adam")
-            & (self.run_df["data_params_ModelConfigdropout_rate"].fillna("0.0").astype(str) == "0.5")
-            & (self.run_df["data_params_ModelConfigrnn_dropout"].fillna("0.0").astype(str) == "0.0")
-            & (self.run_df["data_params_ModelConfigkernel_regularizer_scope"].fillna("[]") == "[]")
-            & (self.run_df["data_params_ExperimentConfigbatch_size"].astype(str).fillna("") == "128")
-            & (
-                (self.run_df["data_params_HuaweiPreprocessorConfigfine_drain_log_st"].astype(str).fillna("") == "0.75")
-                | (self.run_df["data_params_HuaweiPreprocessorConfigdrain_log_st"].astype(str).fillna("") == "0.75")
-            )
-            & (
-                (self.run_df["data_params_HuaweiPreprocessorConfigfine_drain_log_depth"].astype(str).fillna("") == "10")
-                | (self.run_df["data_params_HuaweiPreprocessorConfigdrain_log_depth"].astype(str).fillna("") == "10")
-            )
-            & (
-                (~ (
-                    (self.run_df["data_params_SequenceConfigx_sequence_column_name"].astype(str).fillna("") == "coarse_log_cluster_template")
-                    | (self.run_df["data_params_SequenceConfigy_sequence_column_name"].astype(str).fillna("") == "coarse_log_cluster_template")
-                    | (self.run_df["data_params_HuaweiPreprocessorConfigdrain_log_sts"].fillna("[]").astype(str).apply(len) > 2)
-                )) | (
-                    (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_st"].astype(str).fillna("") == "0.2")
-                    & (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_depth"].astype(str).fillna("") == "4")
-                )
-            )
-        ]
+        # huawei_run_df = self.run_df[
+        #     (self.run_df["data_tags_sequence_type"] == "huawei_logs")
+        #     & (self.run_df["data_params_ModelConfigrnn_type"] == "gru")
+        #     & (self.run_df["data_params_SequenceConfigtest_percentage"].fillna("").astype(str) == "0.1")
+        #     & (self.run_df["data_params_ModelConfigbest_model_metric"] == "val_loss")
+        #     & (self.run_df["info_status"] == "FINISHED")
+        #     & (self.run_df["data_params_ModelConfigrnn_dim"] == "200")
+        #     & (self.run_df["data_params_ModelConfigoptimizer"].fillna("adam") == "adam")
+        #     & (self.run_df["data_params_ModelConfigdropout_rate"].fillna("0.0").astype(str) == "0.5")
+        #     & (self.run_df["data_params_ModelConfigrnn_dropout"].fillna("0.0").astype(str) == "0.0")
+        #     & (self.run_df["data_params_ModelConfigkernel_regularizer_scope"].fillna("[]") == "[]")
+        #     & (self.run_df["data_params_ExperimentConfigbatch_size"].astype(str).fillna("") == "128")
+        #     & (
+        #         (self.run_df["data_params_HuaweiPreprocessorConfigfine_drain_log_st"].astype(str).fillna("") == "0.75")
+        #         | (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_st"].astype(str).fillna("") == "0.75")
+        #     )
+        #     & (
+        #         (self.run_df["data_params_HuaweiPreprocessorConfigfine_drain_log_depth"].astype(str).fillna("") == "10")
+        #         | (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_depth"].astype(str).fillna("") == "10")
+        #     )
+        #     & (
+        #         (~ (
+        #             (self.run_df["data_params_SequenceConfigx_sequence_column_name"].astype(str).fillna("") == "coarse_log_cluster_template")
+        #             | (self.run_df["data_params_SequenceConfigy_sequence_column_name"].astype(str).fillna("") == "coarse_log_cluster_template")
+        #             | (self.run_df["data_params_HuaweiPreprocessorConfigdrain_log_sts"].fillna("[]").astype(str).apply(len) > 2)
+        #         )) | (
+        #             (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_st"].astype(str).fillna("") == "0.2")
+        #             & (self.run_df["data_params_HuaweiPreprocessorConfigcoarse_drain_log_depth"].astype(str).fillna("") == "4")
+        #         )
+        #     )
+        # ]
+        huawei_run_df = self.run_df.copy()
 
         if risk_prediction:
             huawei_run_df = huawei_run_df[
@@ -245,11 +246,11 @@ class MlflowHelper:
                 huawei_run_df["data_params_SequenceConfigy_sequence_column_name"].apply(lambda x: x in valid_y_columns)
             ]
 
-        if not include_noise:
+        if not include_noise and 'data_tags_noise_type' in huawei_run_df.columns:
             huawei_run_df = huawei_run_df[
                 (huawei_run_df["data_tags_noise_type"].fillna("").apply(len) == 0)
             ]
-        if not include_refinements:
+        if not include_refinements and 'data_tags_refinement_type' in huawei_run_df.columns:
             huawei_run_df = huawei_run_df[
                 (huawei_run_df["data_tags_refinement_type"].fillna("") == "")
                 & (huawei_run_df["data_params_HuaweiPreprocessorConfigmin_causality"].fillna(0.0).astype(str) == "0.01")

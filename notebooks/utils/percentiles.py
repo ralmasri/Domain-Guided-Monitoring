@@ -6,11 +6,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from typing import Dict, Set, List, Any, Tuple
 
-from loading import (
+from utils.loading import (
     load_input_frequency_dict,
     load_prediction_df,
 )
-from comparison import load_comparison_df
+from utils.comparison import load_comparison_df
 
 
 def _nullsafe_accuracy_for(top: pd.DataFrame, bottom: pd.DataFrame) -> float:
@@ -411,7 +411,7 @@ def plot_accuracies_per_percentiles(
         mean_grouped_df = pd.concat(comparison_dfs).reset_index()
         mean_grouped_df = mean_grouped_df.melt(
             id_vars=["type", "percentile", comparison_column],
-            value_vars=["causal", "gram", "text"],
+            value_vars=["causal_heuristic", "causal_score"],
             value_name="mean_accuracy_diff",
         )
 
@@ -452,7 +452,7 @@ def plot_accuracies_per_percentiles(
         median_grouped_df = pd.concat(comparison_dfs).reset_index()
         median_grouped_df = median_grouped_df.melt(
             id_vars=["type", "percentile", comparison_column],
-            value_vars=["causal", "gram", "text"],
+            value_vars=["causal_heuristic", "causal_score"],
             value_name="median_accuracy_diff",
         )
 
