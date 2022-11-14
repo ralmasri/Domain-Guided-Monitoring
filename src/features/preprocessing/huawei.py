@@ -660,7 +660,7 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
 
     def load_data(self, max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data().fillna("")
+        huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
 
         if max_data_size > 0 and max_data_size < huawei_df.shape[0]:
             huawei_df = huawei_df.head(max_data_size)
