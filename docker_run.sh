@@ -1,0 +1,1 @@
+docker run -v $(pwd)/mlruns:/Domain-Guided-Monitoring/mlruns -v $(pwd)/artifacts:/Domain-Guided-Monitoring/artifacts -it domainml

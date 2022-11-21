@@ -1,4 +1,4 @@
-name: aiops
+name: base
 dependencies:
   - python=3.8
   - pandas
@@ -8,6 +8,7 @@ dependencies:
   - seaborn
   - tqdm
   - lxml
+  - conda-forge::fasttext
   # Plotting
   - conda-forge::nbformat
   - plotly::plotly
@@ -18,10 +19,10 @@ dependencies:
   - pip
   - pip:
     - dc-cli
-    - fasttext
     - pyvis
     - beautifulsoup4
     - mlflow
     - tensorflow==2.2
     - cdt==0.6.0
     - networkx==2.8.7
+    - protobuf==3.20.*
