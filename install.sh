@@ -22,6 +22,8 @@ apt-get -qq install libfreetype6-dev -y
 apt-get -qq install libpng-dev -y
 apt-get -qq install libtiff5-dev -y
 apt-get -qq install libjpeg-dev -y
+apt-get -qq install libharfbuzz-dev -y
+apt-get -qq install libfribidi-dev -y
 
 Rscript -e 'install.packages(c("V8"),repos="http://cran.us.r-project.org", quiet=TRUE, verbose=FALSE)'
 Rscript -e 'install.packages(c("sfsmisc"),repos="http://cran.us.r-project.org", quiet=TRUE, verbose=FALSE)'

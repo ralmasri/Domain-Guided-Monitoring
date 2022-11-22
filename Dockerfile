@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM nvidia/cuda:11.7.0-runtime-ubuntu20.04
 
 ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Linux-x86_64.sh
 ARG CONDA_SH=Miniconda3-py38_4.12.0-Linux-x86_64.sh
@@ -6,7 +6,7 @@ ARG CONDA_DIR=.tmp
 
 RUN mkdir /Domain-Guided-Monitoring
 RUN mkdir /Domain-Guided-Monitoring/artifacts
-RUN mkdir /Domain-Guided-Monitoring/mlruns
+RUN mkdir -p /Domain-Guided-Monitoring/mlruns/1
 
 COPY data /Domain-Guided-Monitoring/data
 COPY notebooks /Domain-Guided-Monitoring/notebooks
