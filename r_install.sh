@@ -1,3 +1,6 @@
+#!/bin/bash
+# A script for installing CDT package R dependencies
+
 apt-get -qq update
 DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
 apt-get -qq install dialog apt-utils -y
@@ -40,5 +43,5 @@ Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/sparsebnUti
 Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/ccdrAlgorithm/ccdrAlgorithm_0.0.6.tar.gz", repos=NULL, type="source")'
 Rscript -e 'BiocManager::install(c("discretecdAlgorithm"))'
 Rscript -e 'install.packages("devtools", repos="http://cran.us.r-project.org", quiet=TRUE, verbose=FALSE)'
-Rscript -e 'library(devtools); install_github("cran/CAM"); install_github("cran/momentchi2"); install_github("Diviyan-Kalainathan/RCIT", quiet=TRUE, verbose=FALSE)'
+Rscript -e 'library(devtools); install_github("cran/CAM"); install_github("cran/momentchi2"); install_github("Diviyan-Kalainathan/RCIT", quiet=TRUE)'
 Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/sparsebn/sparsebn_0.1.2.tar.gz", repos=NULL, type="source")'
