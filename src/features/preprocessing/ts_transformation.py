@@ -1,3 +1,5 @@
+# Based on the code from https://github.com/amulog/logdag
+
 from src.features.preprocessing.evdef import EventDefinitionMap
 import datetime
 import pandas as pd
@@ -26,7 +28,7 @@ class TimeSeriesTransformer():
         top_dt, end_dt = self._get_date_range(data_df)
         evmap, evdict = self._create_maps(data_df, top_dt, end_dt)
         data = self._event2stat(evdict, top_dt, end_dt)
-        dm = np.array([d for eid, d in sorted(data.items())]).transpose()
+        dm = np.array([d for _, d in sorted(data.items())]).transpose()
         df = pd.DataFrame(dm)
         return df, evmap
 
@@ -42,7 +44,7 @@ class TimeSeriesTransformer():
 
     def _discretize(self, l_dt, l_label, method):
 
-        def return_empty():
+        def return_empty(bin_num):
             if method in ("count", "binary"):
                 return [0] * bin_num
             elif method == "datetime":
@@ -62,7 +64,7 @@ class TimeSeriesTransformer():
                 raise NotImplementedError(
                     "Invalid method name ({0})".format(method))
 
-        def update_tempobj():
+        def update_tempobj(temp):
             if method == "count":
                 return temp + 1
             elif method == "binary":
@@ -98,7 +100,7 @@ class TimeSeriesTransformer():
                 ret.append(temp)
                 continue
             while new_dt < label_dt:
-                temp = update_tempobj()
+                temp = update_tempobj(temp)
                 try:
                     new_dt = next(iterobj)
                 except StopIteration:
