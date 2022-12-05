@@ -14,6 +14,7 @@ from .base import Preprocessor
 from collections import Counter
 from .drain import Drain, DrainParameters
 import numpy as np
+import cdt
 from cdt.causality.graph import PC, GES
 import networkx as nx
 
@@ -70,7 +71,7 @@ class HuaweiPreprocessorConfig:
     relevant_log_column: str = "fine_log_cluster_template"
     log_template_file: Path = Path("data/attention_log_templates.csv")
     remove_dates_from_payload: bool = True
-
+    r_path = '/usr/bin/Rscript'
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     sequence_column_name: str = "all_events"
@@ -749,6 +750,7 @@ class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
             'constraint': lambda df: PC(CItest = 'binary').predict(df),
             'score': lambda df: GES().predict(df)
         }
+        cdt.SETTINGS.rpath = config.r_path
 
     def load_data(self, algorithm='score', max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
@@ -763,6 +765,7 @@ class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
             + 
             ['@timestamp']
         )
+        relevant_columns = list(relevant_columns)
 
         transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig())
         transformed_df, evmap = transformer.transform_time_series_to_events(huawei_df, relevant_columns)
