@@ -9,6 +9,13 @@ class ExperimentConfig:
     n_epochs: int = 10
     sequence_type: str = "mimic"
     model_type: str = "simple"
+    
+    # Knowledge
+    serialize_knowledge_df: bool = False
+    only_generate_knowledge: bool = False # Don't run ML if true
+    load_knowledge_df: bool = False
+    knowledge_df_file: str = "data/knowledge_df.csv"
+
     # NOISE
     noise_to_add: float = 0.0
     noise_to_remove: float = 0.0

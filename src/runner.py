@@ -29,19 +29,21 @@ class ExperimentRunner:
         metadata = self._collect_sequence_metadata(sequence_df)
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
-        knowledge = self._build_model(metadata, knowledge, model)
 
-        model.train_dataset(
-            train_dataset,
-            test_dataset,
-            self.multilabel_classification,
-            self.config.n_epochs,
-        )
+        if not self.config.only_generate_knowledge:
+            knowledge = self._build_model(metadata, knowledge, model)
 
-        self._log_dataset_info(train_dataset, test_dataset, metadata)
-        self._generate_artifacts(
-            metadata, train_dataset, test_dataset, knowledge, model
-        )
+            model.train_dataset(
+                train_dataset,
+                test_dataset,
+                self.multilabel_classification,
+                self.config.n_epochs,
+            )
+
+            self._log_dataset_info(train_dataset, test_dataset, metadata)
+            self._generate_artifacts(
+                metadata, train_dataset, test_dataset, knowledge, model
+            )
         self._set_mlflow_tags(metadata)
         plt.close("all")
         logging.info("Finished run %s", self.run_id)
@@ -60,10 +62,13 @@ class ExperimentRunner:
     def _set_mlflow_tags(self, metadata: sequences.SequenceMetadata):
         mlflow.set_tag("sequence_type", self.config.sequence_type)
         mlflow.set_tag("model_type", self.config.model_type)
-        if len(metadata.y_vocab) == 1:
-            mlflow.set_tag("task_type", "risk_prediction")
+        if self.config.only_generate_knowledge:
+            mlflow.set_tag("task_type", "knowledge_generation")
         else:
-            mlflow.set_tag("task_type", "sequence_prediction")
+            if len(metadata.y_vocab) == 1:
+                mlflow.set_tag("task_type", "risk_prediction")
+            else:
+                mlflow.set_tag("task_type", "sequence_prediction")
 
     def _generate_artifacts(
         self,
@@ -250,6 +255,26 @@ class ExperimentRunner:
         model.build(metadata, base_knowledge)
         return base_knowledge
 
+    def _serialize_knowledge_df(self, knowledge_df: pd.DataFrame) -> None:
+        knowledge_file_path = Path(self.config.knowledge_df_file)
+        knowledge_df.to_csv(knowledge_file_path)
+
+    def _load_knowledge_df(self, generator_func, **kwargs) -> pd.DataFrame:
+        knowledge_df: pd.DataFrame = pd.DataFrame()
+        if self.config.load_knowledge_df:
+            knowledge_file_path = Path(self.config.knowledge_df_file)
+            if not knowledge_file_path.exists() or not self.config.knowledge_df_file.endswith('.csv'):
+                logging.info(f"Unable to load knowledge dataframe from path {self.config.knowledge_df_file}.")
+                logging.info("Generating the knowledge from scratch instead...")
+                knowledge_df = generator_func(**kwargs)
+            else:
+                logging.info("Knowledge found. Deserializing now...")
+                knowledge_df = pd.read_csv(knowledge_file_path)
+        else:
+            knowledge_df = generator_func(**kwargs)
+        
+        return knowledge_df
+
     def _load_model(
         self, metadata: sequences.SequenceMetadata
     ) -> Tuple[knowledge.BaseKnowledge, models.BaseModel]:
@@ -388,13 +413,27 @@ class ExperimentRunner:
         if self.config.sequence_type == "huawei_logs":
             causality_preprocessor = preprocessing.ConcurrentAggregatedLogsTimeSeriesPreprocessor(
                 config=preprocessing.HuaweiPreprocessorConfig(),
+            ) 
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
+                algorithm='score', 
+                max_data_size=self.config.max_data_size
             )
-            causality_df = causality_preprocessor.load_data(algorithm='score', max_data_size=self.config.max_data_size)
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
             causality = knowledge.CausalityKnowledge(
                 config=knowledge.KnowledgeConfig(),
             )
             causality.build_causality_from_df(causality_df, metadata.x_vocab)
             return causality
+        else:
+            logging.fatal(
+                "Causal score knowledge not available for data type %s",
+                self.config.sequence_type,
+            )
+            raise InputError(
+                message="Causal score knowledge not available for data type: "
+                + str(self.config.sequence_type)
+            )
 
     def _load_causal_constraint_knowledge(
         self, metadata: sequences.SequenceMetadata
@@ -404,12 +443,26 @@ class ExperimentRunner:
             causality_preprocessor = preprocessing.ConcurrentAggregatedLogsTimeSeriesPreprocessor(
                 config=preprocessing.HuaweiPreprocessorConfig(),
             )
-            causality_df = causality_preprocessor.load_data(algorithm='constraint', max_data_size=self.config.max_data_size)
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data,
+                algorithm='constraint',
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
             causality = knowledge.CausalityKnowledge(
                 config=knowledge.KnowledgeConfig(),
             )
             causality.build_causality_from_df(causality_df, metadata.x_vocab)
             return causality
+        else:
+            logging.fatal(
+                "Causal constraint knowledge not available for data type %s",
+                self.config.sequence_type,
+            )
+            raise InputError(
+                message="Causal constraint knowledge not available for data type: "
+                + str(self.config.sequence_type)
+            )
 
     def _load_causal_heuristic_knowledge(
         self, metadata: sequences.SequenceMetadata
@@ -419,7 +472,11 @@ class ExperimentRunner:
             causality_preprocessor = preprocessing.ConcurrentAggregatedLogsCausalityPreprocessor(
                 config=preprocessing.HuaweiPreprocessorConfig(),
             )
-            causality_df = causality_preprocessor.load_data(self.config.max_data_size)
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data,
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
             causality = knowledge.CausalityKnowledge(
                 config=knowledge.KnowledgeConfig(),
             )
@@ -430,7 +487,9 @@ class ExperimentRunner:
             causality_preprocessor = preprocessing.KnowlifePreprocessor(
                 config=mimic_config,
             )
-            causality_df = causality_preprocessor.load_data()
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data)
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
             causality = knowledge.CausalityKnowledge(
                 config=knowledge.KnowledgeConfig(),
             )
