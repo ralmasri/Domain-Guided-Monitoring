@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import dataclass_cli
 import dataclasses
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 
 @dataclass_cli.add
 @dataclasses.dataclass
@@ -21,7 +21,7 @@ class TimeSeriesTransformer():
     def __init__(self, config: TimeSeriesTransformerConfig):
         self.config = config
 
-    def transform_time_series_to_events(self, huawei_df: pd.DataFrame, relevant_columns: List[str]):
+    def transform_time_series_to_events(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]):
         data_df = huawei_df.copy(deep=True)
         data_df.drop(labels=[x for x in data_df.columns if x not in relevant_columns], axis=1, inplace=True)
         data_df = data_df.sort_values(by='@timestamp').reset_index(drop=True).fillna("")

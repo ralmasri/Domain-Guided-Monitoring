@@ -658,8 +658,13 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
         self, config: HuaweiPreprocessorConfig,
     ):
         self.config = config
-
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+        self.algorithms = {
+            'constraint': lambda df: PC(CItest = 'binary').predict(df),
+            'score': lambda df: GES().predict(df)
+        }
+        cdt.SETTINGS.rpath = config.r_path
+        
+    def load_data(self, algorithm = "heuristic", max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
 
@@ -673,27 +678,34 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
                 if not self.config.log_only_causality or "log" in x
             ]
         )
-        counted_causality = self._generate_counted_causality(
-            huawei_df, relevant_columns
-        )
 
         causality_records = []
-        for from_value, to_values in tqdm(
-            counted_causality.items(),
-            desc="Generating causality df from counted causality",
-        ):
-            total_to_counts = len(to_values)
-            to_values_counter: Dict[str, int] = Counter(to_values)
-            for to_value, to_count in to_values_counter.items():
-                if to_count / total_to_counts > self.config.min_causality:
-                    causality_records.append(
-                        {
-                            "parent_id": from_value,
-                            "parent_name": from_value.split("#")[1],
-                            "child_id": to_value,
-                            "child_name": to_value.split("#")[1],
-                        },
-                    )
+        if algorithm == "heuristic":
+            counted_causality = self._generate_counted_causality(
+                huawei_df, relevant_columns
+            )
+
+            for from_value, to_values in tqdm(
+                counted_causality.items(),
+                desc="Generating causality df from counted causality",
+            ):
+                total_to_counts = len(to_values)
+                to_values_counter: Dict[str, int] = Counter(to_values)
+                for to_value, to_count in to_values_counter.items():
+                    if to_count / total_to_counts > self.config.min_causality:
+                        causality_records.append(
+                            {
+                                "parent_id": from_value,
+                                "parent_name": from_value.split("#")[1],
+                                "child_id": to_value,
+                                "child_name": to_value.split("#")[1],
+                            },
+                        )
+        else:
+            relevant_columns.add('@timestamp') # Heuristic doesn't use the timestamps
+            transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig())
+            transformed_df, evmap = transformer.transform_time_series_to_events(huawei_df, relevant_columns)
+            causality_records = self._generate_causality_records(transformed_df, evmap, algorithm)
 
         return (
             pd.DataFrame.from_records(causality_records)
@@ -738,47 +750,15 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
                         causality[previous_column_value].append(current_column_value)
             previous_row = row
         return causality
-
-
-class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
-    def __init__(
-        self,
-        config: HuaweiPreprocessorConfig,
-    ):
-        self.config = config
-        self.algorithms = {
-            'constraint': lambda df: PC(CItest = 'binary').predict(df),
-            'score': lambda df: GES().predict(df)
-        }
-        cdt.SETTINGS.rpath = config.r_path
-
-    def load_data(self, algorithm='score', max_data_size=-1) -> pd.DataFrame:
-        preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
-        
-        relevant_columns = set(
-            [
-                x
-                for x in preprocessor.relevant_columns
-                if not self.config.log_only_causality or "log" in x
-            ] 
-            + 
-            ['@timestamp']
-        )
-        relevant_columns = list(relevant_columns)
-
-        transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig())
-        transformed_df, evmap = transformer.transform_time_series_to_events(huawei_df, relevant_columns)
-
-        causality_records = self._generate_causality_records(transformed_df, evmap, algorithm)
-
-        return (
-            pd.DataFrame.from_records(causality_records)
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
-
+    
     def _generate_causality_records(self, transformed_df: pd.DataFrame, evmap: EventDefinitionMap, algorithm: str):
+        if algorithm not in self.algorithms:
+            logging.fatal(
+                f"Causal knowledge algorithm {algorithm} is not available"
+            )
+            raise AlgorithmChoiceError(
+                message=f"Causal knowledge algorithm {algorithm} is not available"
+            )
         print(f'Generating causality with {algorithm} algorithm...')
         output: nx.Graph = self.algorithms[algorithm](transformed_df)
         causality_records = []
@@ -795,3 +775,10 @@ class ConcurrentAggregatedLogsTimeSeriesPreprocessor(Preprocessor):
                 }
             )
         return causality_records
+
+class AlgorithmChoiceError(Exception):
+    """Exception raised for errors when algorithm doesn't exist."""
+
+    def __init__(self, message):
+        self.message = message
+    
