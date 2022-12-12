@@ -15,7 +15,7 @@ from collections import Counter
 from .drain import Drain, DrainParameters
 import numpy as np
 import cdt
-from cdt.causality.graph import PC, GES
+from cdt.causality.graph import PC, GES, CCDr, CGNN, SAM
 import networkx as nx
 
 
@@ -660,7 +660,10 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
         self.config = config
         self.algorithms = {
             'constraint': lambda df: PC(CItest = 'binary').predict(df),
-            'score': lambda df: GES().predict(df)
+            'score': lambda df: GES().predict(df),
+            'CCDr': lambda df: CCDr().predict(df),
+            'CGNN': lambda df: CGNN().predict(df),
+            'SAM': lambda df: SAM().predict(df)
         }
         cdt.SETTINGS.rpath = config.r_path
         
