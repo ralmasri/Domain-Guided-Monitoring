@@ -6,20 +6,40 @@ import pandas as pd
 import numpy as np
 import dataclass_cli
 import dataclasses
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Union
+import re
 
 @dataclass_cli.add
 @dataclasses.dataclass
 class TimeSeriesTransformerConfig:
-    bin_size: datetime.timedelta = datetime.timedelta(seconds=10)
-    bin_overlap: datetime.timedelta = datetime.timedelta(seconds=8)
+    bin_size: str = '00:00:60'
+    bin_overlap: str = '00:00:50'
     date_format: str = '%Y-%m-%dT%H:%M:%S.%f000%z'
 
+def parse_timedelta(stamp: str) -> Union[datetime.timedelta,str]:
+    if 'day' in stamp:
+        m = re.match(r'(?P<d>[-\d]+) day[s]*, (?P<h>\d+):'
+                     r'(?P<m>\d+):(?P<s>\d[\.\d+]*)', stamp)
+    else:
+        m = re.match(r'(?P<h>\d+):(?P<m>\d+):'
+                     r'(?P<s>\d[\.\d+]*)', stamp)
+    if not m:
+        return ''
+
+    time_dict = {key: float(val) for key, val in m.groupdict().items()}
+    if 'd' in time_dict:
+        return datetime.timedelta(days=time_dict['d'], hours=time_dict['h'],
+                         minutes=time_dict['m'], seconds=time_dict['s'])
+    else:
+        return datetime.timedelta(hours=time_dict['h'],
+                         minutes=time_dict['m'], seconds=time_dict['s'])
 
 class TimeSeriesTransformer():
 
     def __init__(self, config: TimeSeriesTransformerConfig):
         self.config = config
+        self.bin_size = parse_timedelta(self.config.bin_size)
+        self.bin_overlap = parse_timedelta(self.config.bin_overlap)
 
     def transform_time_series_to_events(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]):
         data_df = huawei_df.copy(deep=True)
@@ -111,11 +131,11 @@ class TimeSeriesTransformer():
         return ret
 
     def _autodiscretize_with_slide(self, l_dt, dt_range):
-        slide = self.config.bin_size - self.config.bin_overlap
+        slide = self.bin_size - self.bin_overlap
         top_dt, end_dt = dt_range
-        slide_width = max(int(self.config.bin_size.total_seconds() / slide.total_seconds()), 1)
+        slide_width = max(int(self.bin_size.total_seconds() / slide.total_seconds()), 1)
         l_top = self._label((top_dt, end_dt), slide)[:-1]
-        l_end = [min(t + self.config.bin_size, end_dt) for t in l_top]
+        l_end = [min(t + self.bin_size, end_dt) for t in l_top]
 
         ret = []
         noslide = self._discretize(l_dt, l_top + [end_dt], method='datetime')
@@ -133,11 +153,11 @@ class TimeSeriesTransformer():
 
     def _event2stat(self, evdict: Dict, top_dt: datetime.datetime, end_dt: datetime.datetime):
         d_stat = {}
-        labels = self._label((top_dt, end_dt), self.config.bin_size)
+        labels = self._label((top_dt, end_dt), self.bin_size)
         for eid, l_ev in evdict.items():
             if len(l_ev) == 0:
                 continue
-            if self.config.bin_overlap == datetime.timedelta(seconds = 0):
+            if self.bin_overlap == datetime.timedelta(seconds = 0):
                 val = self._discretize(l_ev, labels, method="binary")
             else:
                 val = self._autodiscretize_with_slide(l_ev, dt_range = (top_dt, end_dt))

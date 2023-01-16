@@ -7,3 +7,4 @@ from .c24 import C24FraudPreprocessor, C24HierarchyPreprocessor, C24Preprocessor
 from .drain import Drain, DrainParameters
 from .huawei_traces import HuaweiTracePreprocessor
 from .evdef import EventDefinitionMap, EvDef
+from .ts_transformation import TimeSeriesTransformerConfig

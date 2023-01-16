@@ -10,6 +10,7 @@ def _log_all_configs_to_mlflow():
         ExperimentConfig(),
         preprocessing.huawei.HuaweiPreprocessorConfig(),
         preprocessing.mimic.MimicPreprocessorConfig(),
+        preprocessing.ts_transformation.TimeSeriesTransformerConfig(),
         sequences.SequenceConfig(),
         models.ModelConfig(),
         models.TextualPaperModelConfig(),
