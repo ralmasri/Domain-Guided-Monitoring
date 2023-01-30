@@ -14,7 +14,7 @@ import re
 class TimeSeriesTransformerConfig:
     bin_size: str = '00:00:60'
     bin_overlap: str = '00:00:50'
-    date_format: str = '%Y-%m-%dT%H:%M:%S.%f000%z'
+    date_format: str = "%Y-%m-%dT%H:%M:%S.%f%z"
 
 def parse_timedelta(stamp: str) -> Union[datetime.timedelta,str]:
     if 'day' in stamp:
@@ -179,7 +179,8 @@ class TimeSeriesTransformer():
         return evmap, evdict
 
     def _get_date_range(self, data_df: pd.DataFrame):
-        data_df['@timestamp'] = data_df['@timestamp'].apply(lambda x: datetime.datetime.strptime(x, self.config.date_format))
+        # the timestamps have 9-digit microseconds; however, python uses 6 digits
+        data_df['@timestamp'] = data_df['@timestamp'].apply(lambda x: datetime.datetime.strptime(x[:26] + x[29:], self.config.date_format))
         min_dt: datetime.datetime = data_df['@timestamp'].iloc[0].to_pydatetime()
         max_dt: datetime.datetime = data_df['@timestamp'].iloc[-1].to_pydatetime()
         top_dt = datetime.datetime.combine(min_dt.date(), datetime.time(hour=min_dt.hour)).replace(tzinfo=min_dt.tzinfo)
