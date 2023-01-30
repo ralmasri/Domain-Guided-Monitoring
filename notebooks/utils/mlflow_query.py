@@ -119,9 +119,9 @@ class MlflowHelper:
         ):
             final_run_dict["data_tags_model_type"] = "gram_logs"
 
-        self.run_df = self.run_df.append(
-            final_run_dict, ignore_index=True
-        ).drop_duplicates(subset=["info_run_id"], keep="last", ignore_index=True)
+        self.run_df = pd.concat(
+            [self.run_df, pd.DataFrame([final_run_dict])], ignore_index=True
+            ).drop_duplicates(subset=["info_run_id"], keep="last", ignore_index=True)
     
     
     def mimic_run_df(
