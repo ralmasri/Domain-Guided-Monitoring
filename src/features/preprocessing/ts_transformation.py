@@ -14,7 +14,7 @@ import re
 class TimeSeriesTransformerConfig:
     bin_size: str = '00:00:60'
     bin_overlap: str = '00:00:50'
-    date_format: str = "%Y-%m-%dT%H:%M:%S.%f%z"
+    timestamp_column: str = '@timestamp'
 
 def parse_timedelta(stamp: str) -> Union[datetime.timedelta,str]:
     if 'day' in stamp:
@@ -41,10 +41,9 @@ class TimeSeriesTransformer():
         self.bin_size = parse_timedelta(self.config.bin_size)
         self.bin_overlap = parse_timedelta(self.config.bin_overlap)
 
-    def transform_time_series_to_events(self, huawei_df: pd.DataFrame, relevant_columns: Set[str]):
-        data_df = huawei_df.copy(deep=True)
+    def transform_time_series_to_events(self, data_df: pd.DataFrame, relevant_columns: Set[str]):
         data_df.drop(labels=[x for x in data_df.columns if x not in relevant_columns], axis=1, inplace=True)
-        data_df = data_df.sort_values(by='@timestamp').reset_index(drop=True).fillna("")
+        data_df = data_df.sort_values(by=self.config.timestamp_column).reset_index(drop=True).fillna("")
         top_dt, end_dt = self._get_date_range(data_df)
         evmap, evdict = self._create_maps(data_df, top_dt, end_dt)
         data = self._event2stat(evdict, top_dt, end_dt)
@@ -166,23 +165,23 @@ class TimeSeriesTransformer():
         return d_stat
 
     def _create_maps(self, data_df: pd.DataFrame, top_dt: datetime.datetime, end_dt: datetime.datetime):
-        evmap = EventDefinitionMap(top_dt=top_dt, end_dt=end_dt)
+        evmap = EventDefinitionMap(top_dt=top_dt, end_dt=end_dt, timestamp_column=self.config.timestamp_column)
         evdict = {}
-        for _, row in data_df.iterrows():
+        def row_func(row):
             row_eids = evmap.process_row(data_df.columns, row)
-            timestamp = row['@timestamp']
+            timestamp = row[self.config.timestamp_column]
             for eid in row_eids:
                 if eid in evdict:
                     evdict[eid].append(timestamp)
                 else:
-                    evdict[eid] = [timestamp]            
+                    evdict[eid] = [timestamp]
+            return row
+        data_df.apply(row_func, axis=1)        
         return evmap, evdict
 
     def _get_date_range(self, data_df: pd.DataFrame):
-        # the timestamps have 9-digit microseconds; however, python uses 6 digits
-        data_df['@timestamp'] = data_df['@timestamp'].apply(lambda x: datetime.datetime.strptime(x[:26] + x[29:], self.config.date_format))
-        min_dt: datetime.datetime = data_df['@timestamp'].iloc[0].to_pydatetime()
-        max_dt: datetime.datetime = data_df['@timestamp'].iloc[-1].to_pydatetime()
+        min_dt: datetime.datetime = data_df[self.config.timestamp_column].iloc[0].to_pydatetime()
+        max_dt: datetime.datetime = data_df[self.config.timestamp_column].iloc[-1].to_pydatetime()
         top_dt = datetime.datetime.combine(min_dt.date(), datetime.time(hour=min_dt.hour)).replace(tzinfo=min_dt.tzinfo)
         end_dt = datetime.datetime.combine(max_dt.date(), datetime.time(hour=max_dt.hour, minute=max_dt.minute + 1)).replace(tzinfo=min_dt.tzinfo)
         return top_dt, end_dt

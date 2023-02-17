@@ -3,9 +3,10 @@ from collections import namedtuple
 EvDef = namedtuple('EvDef', ['type', 'value'])
 
 class EventDefinitionMap:
-    def __init__(self, top_dt, end_dt):
+    def __init__(self, top_dt, end_dt, timestamp_column):
         self.top_dt = top_dt
         self.end_dt = end_dt
+        self.timestamp_column = timestamp_column
         self._emap = {}
         self._ermap = {}
 
@@ -31,7 +32,7 @@ class EventDefinitionMap:
     def process_row(self, columns, row):
         row_eids = []
         for column in columns:
-                if column == '@timestamp':
+                if column == self.timestamp_column:
                     continue
                 value = row[column]
                 if value == "":

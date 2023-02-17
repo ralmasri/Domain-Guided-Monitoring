@@ -3,6 +3,7 @@ from src.features.preprocessing.evdef import EventDefinitionMap
 from src.features.preprocessing.ts_transformation import TimeSeriesTransformer, TimeSeriesTransformerConfig
 import dataclass_cli
 import dataclasses
+import datetime
 import logging
 import pandas as pd
 from pathlib import Path
@@ -54,6 +55,7 @@ class HuaweiPreprocessorConfig:
     aggregate_per_max_number: int = -1
     aggregate_per_time_frequency: str = ""
     log_datetime_column_name: str = "@timestamp"
+    log_datetime_format: str = "%Y-%m-%dT%H:%M:%S.%f%z"
     log_payload_column_name: str = "Payload"
     use_log_hierarchy: bool = False
     fine_drain_log_depth: int = 10
@@ -73,6 +75,7 @@ class HuaweiPreprocessorConfig:
     log_template_file: Path = Path("data/attention_log_templates.csv")
     remove_dates_from_payload: bool = True
     r_path = '/usr/bin/Rscript'
+    causal_algorithm_alpha: float = 0.05
 
 class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
     sequence_column_name: str = "all_events"
@@ -175,7 +178,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
                 lambda x: column + "#" + x.lower() if len(x) > 0 else ""
             )
 
-        merged_df["all_events"] = merged_df[self.relevant_columns].values.tolist()
+        merged_df["all_events"] = merged_df[list(self.relevant_columns)].values.tolist()
         merged_df["attributes"] = merged_df[
             [x for x in self.relevant_columns if not "log_cluster_template" in x]
         ].values.tolist()
@@ -422,9 +425,9 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self, max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data()
+        huawei_df = preprocessor._load_log_only_data(max_data_size)
         return self._load_column_descriptions(huawei_df, preprocessor.relevant_columns)
 
     def _load_column_descriptions(
@@ -495,15 +498,16 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self, max_data_size=-1) -> pd.DataFrame:
         if self.config.use_log_hierarchy:
-            return self._load_log_only_hierarchy()
+            return self._load_log_only_hierarchy(max_data_size)
         else:
-            return self._load_attribute_only_hierarchy()
+            return self._load_attribute_only_hierarchy(max_data_size)
 
-    def _load_log_only_hierarchy(self) -> pd.DataFrame:
+    def _load_log_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data()
+        huawei_df = preprocessor._load_log_only_data(max_data_size)
+
         relevant_log_columns = set(
             [x for x in preprocessor.relevant_columns if "log_cluster_template" in x]
             + ["coarse_log_cluster_path"]
@@ -512,17 +516,16 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             huawei_df, set(["coarse_log_cluster_path"])
         )
         return (
-            attribute_hierarchy.append(
-                self._load_log_hierarchy(huawei_df, relevant_log_columns),
-                ignore_index=True,
-            )
+            pd.concat(
+            [attribute_hierarchy, self._load_log_hierarchy(huawei_df, relevant_log_columns)], 
+            ignore_index=True)
             .drop_duplicates()
             .reset_index(drop=True)
         )
 
-    def _load_attribute_only_hierarchy(self) -> pd.DataFrame:
+    def _load_attribute_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data()
+        huawei_df = preprocessor._load_log_only_data(max_data_size)
         relevant_columns = set(
             [
                 x
@@ -534,10 +537,7 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             huawei_df, relevant_columns
         )
         return (
-            attribute_hierarchy.append(
-                self._load_log_hierarchy(huawei_df, relevant_columns),
-                ignore_index=True,
-            )
+            pd.concat([attribute_hierarchy, self._load_log_hierarchy(huawei_df, relevant_columns)], ignore_index=True)
             .drop_duplicates()
             .reset_index(drop=True)
         )
@@ -582,15 +582,16 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             columns=["parent_id", "child_id", "parent_name", "child_name"]
         )
         for column in relevant_columns:
-            hierarchy_df = hierarchy_df.append(
-                {
-                    "parent_id": "root",
-                    "parent_name": "root",
-                    "child_id": column,
-                    "child_name": column,
-                },
-                ignore_index=True,
-            )
+            hierarchy_df = pd.concat(
+                    [hierarchy_df,
+                     pd.DataFrame([{
+                        "parent_id": "root",
+                        "parent_name": "root",
+                        "child_id": column,
+                        "child_name": column,
+                        }])
+                    ], 
+                    ignore_index=True)
             values = set(
                 [
                     str(x).lower()
@@ -632,15 +633,18 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
                     child_id = hierarchy[i]
                     child_name = child_id.split("->")[-1]
                     if not parent_id == child_id:
-                        hierarchy_df = hierarchy_df.append(
-                            {
-                                "parent_id": parent_id,
-                                "parent_name": parent_name,
-                                "child_id": child_id,
-                                "child_name": child_name,
-                            },
-                            ignore_index=True,
-                        )
+                        hierarchy_df = pd.concat(
+                            [
+                                hierarchy_df,
+                                pd.DataFrame([
+                                    {
+                                        "parent_id": parent_id,
+                                        "parent_name": parent_name,
+                                        "child_id": child_id,
+                                        "child_name": child_name,
+                                    }
+                                ])
+                            ], ignore_index=True)
                     parent_id = child_id
                     parent_name = child_name
 
@@ -666,135 +670,132 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
             'CGNN': lambda df: CGNN().predict(df), # Runs out of memory
             'SAM': lambda df: SAM(njobs=1, nruns=10).predict(df), # Runs of out memory
             'GIES': lambda df: GIES().predict(df),
-            'GS-mi': lambda df: GS(score='mi').predict(df),
-            'GS-mi-adf': lambda df: GS(score='mi-adf').predict(df),
-            'GS-mc-mi': lambda df: GS(score='mc-mi').predict(df),
-            'GS-smc-mi': lambda df: GS(score='smc-mi').predict(df),
-            'GS-sp-mi': lambda df: GS(score='sp-mi').predict(df),
-            'GS-mi-sh': lambda df: GS(score='mi-sh').predict(df),
-            'GS-x2': lambda df: GS(score='x2').predict(df),
-            'GS-x2-adf': lambda df: GS(score='x2-adf').predict(df),
-            'GS-mc-x2': lambda df: GS(score='mc-x2').predict(df),
-            'GS-smc-x2': lambda df: GS(score='smc-x2').predict(df),
-            'GS-sp-x2': lambda df: GS(score='sp-x2').predict(df),
-            'GS-jt': lambda df: GS(score='jt').predict(df),
-            'GS-mc-jt': lambda df: GS(score='mc-jt').predict(df),
-            'GS-smc-jt': lambda df: GS(score='smc-jt').predict(df),
-            'GS-cor': lambda df: GS(score='cor').predict(df),
-            'GS-mc-cor': lambda df: GS(score='mc-cor').predict(df),
-            'GS-smc-cor': lambda df: GS(score='smc-cor').predict(df),
-            'GS-zf': lambda df: GS(score='zf').predict(df),
-            'GS-mc-zf': lambda df: GS(score='mc-zf').predict(df),
-            'GS-smc-zf': lambda df: GS(score='smc-zf').predict(df),
-            'GS-mi-g': lambda df: GS(score='mi-g').predict(df),
-            'GS-mc-mi-g': lambda df: GS(score='mc-mi-g').predict(df),
-            'GS-smc-mi-g': lambda df: GS(score='smc-mi-g').predict(df),
-            'GS-mi-g-sh': lambda df: GS(score='mi-g-sh').predict(df),
-            'IAMB-mi': lambda df: IAMB(score='mi').predict(df),
-            'IAMB-mi-adf': lambda df: IAMB(score='mi-adf').predict(df),
-            'IAMB-mc-mi': lambda df: IAMB(score='mc-mi').predict(df),
-            'IAMB-smc-mi': lambda df: IAMB(score='smc-mi').predict(df),
-            'IAMB-sp-mi': lambda df: IAMB(score='sp-mi').predict(df),
-            'IAMB-mi-sh': lambda df: IAMB(score='mi-sh').predict(df),
-            'IAMB-x2': lambda df: IAMB(score='x2').predict(df),
-            'IAMB-x2-adf': lambda df: IAMB(score='x2-adf').predict(df),
-            'IAMB-mc-x2': lambda df: IAMB(score='mc-x2').predict(df),
-            'IAMB-smc-x2': lambda df: IAMB(score='smc-x2').predict(df),
-            'IAMB-sp-x2': lambda df: IAMB(score='sp-x2').predict(df),
-            'IAMB-jt': lambda df: IAMB(score='jt').predict(df),
-            'IAMB-mc-jt': lambda df: IAMB(score='mc-jt').predict(df),
-            'IAMB-smc-jt': lambda df: IAMB(score='smc-jt').predict(df),
-            'IAMB-cor': lambda df: IAMB(score='cor').predict(df),
-            'IAMB-mc-cor': lambda df: IAMB(score='mc-cor').predict(df),
-            'IAMB-smc-cor': lambda df: IAMB(score='smc-cor').predict(df),
-            'IAMB-zf': lambda df: IAMB(score='zf').predict(df),
-            'IAMB-mc-zf': lambda df: IAMB(score='mc-zf').predict(df),
-            'IAMB-smc-zf': lambda df: IAMB(score='smc-zf').predict(df),
-            'IAMB-mi-g': lambda df: IAMB(score='mi-g').predict(df),
-            'IAMB-mc-mi-g': lambda df: IAMB(score='mc-mi-g').predict(df),
-            'IAMB-smc-mi-g': lambda df: IAMB(score='smc-mi-g').predict(df),
-            'IAMB-mi-g-sh': lambda df: IAMB(score='mi-g-sh').predict(df),
-            'Fast-IAMB-mi': lambda df: Fast_IAMB(score='mi').predict(df),
-            'Fast-IAMB-mi-adf': lambda df: Fast_IAMB(score='mi-adf').predict(df),
-            'Fast-IAMB-mc-mi': lambda df: Fast_IAMB(score='mc-mi').predict(df),
-            'Fast-IAMB-smc-mi': lambda df: Fast_IAMB(score='smc-mi').predict(df),
-            'Fast-IAMB-sp-mi': lambda df: Fast_IAMB(score='sp-mi').predict(df),
-            'Fast-IAMB-mi-sh': lambda df: Fast_IAMB(score='mi-sh').predict(df),
-            'Fast-IAMB-x2': lambda df: Fast_IAMB(score='x2').predict(df),
-            'Fast-IAMB-x2-adf': lambda df: Fast_IAMB(score='x2-adf').predict(df),
-            'Fast-IAMB-mc-x2': lambda df: Fast_IAMB(score='mc-x2').predict(df),
-            'Fast-IAMB-smc-x2': lambda df: Fast_IAMB(score='smc-x2').predict(df),
-            'Fast-IAMB-sp-x2': lambda df: Fast_IAMB(score='sp-x2').predict(df),
-            'Fast-IAMB-jt': lambda df: Fast_IAMB(score='jt').predict(df),
-            'Fast-IAMB-mc-jt': lambda df: Fast_IAMB(score='mc-jt').predict(df),
-            'Fast-IAMB-smc-jt': lambda df: Fast_IAMB(score='smc-jt').predict(df),
-            'Fast-IAMB-cor': lambda df: Fast_IAMB(score='cor').predict(df),
-            'Fast-IAMB-mc-cor': lambda df: Fast_IAMB(score='mc-cor').predict(df),
-            'Fast-IAMB-smc-cor': lambda df: Fast_IAMB(score='smc-cor').predict(df),
-            'Fast-IAMB-zf': lambda df: Fast_IAMB(score='zf').predict(df),
-            'Fast-IAMB-mc-zf': lambda df: Fast_IAMB(score='mc-zf').predict(df),
-            'Fast-IAMB-smc-zf': lambda df: Fast_IAMB(score='smc-zf').predict(df),
-            'Fast-IAMB-mi-g': lambda df: Fast_IAMB(score='mi-g').predict(df),
-            'Fast-IAMB-mc-mi-g': lambda df: Fast_IAMB(score='mc-mi-g').predict(df),
-            'Fast-IAMB-smc-mi-g': lambda df: Fast_IAMB(score='smc-mi-g').predict(df),
-            'Fast-IAMB-mi-g-sh': lambda df: Fast_IAMB(score='mi-g-sh').predict(df),
-            'Inter-IAMB-mi': lambda df: Inter_IAMB(score='mi').predict(df),
-            'Inter-IAMB-mi-adf': lambda df: Inter_IAMB(score='mi-adf').predict(df),
-            'Inter-IAMB-mc-mi': lambda df: Inter_IAMB(score='mc-mi').predict(df),
-            'Inter-IAMB-smc-mi': lambda df: Inter_IAMB(score='smc-mi').predict(df),
-            'Inter-IAMB-sp-mi': lambda df: Inter_IAMB(score='sp-mi').predict(df),
-            'Inter-IAMB-mi-sh': lambda df: Inter_IAMB(score='mi-sh').predict(df),
-            'Inter-IAMB-x2': lambda df: Inter_IAMB(score='x2').predict(df),
-            'Inter-IAMB-x2-adf': lambda df: Inter_IAMB(score='x2-adf').predict(df),
-            'Inter-IAMB-mc-x2': lambda df: Inter_IAMB(score='mc-x2').predict(df),
-            'Inter-IAMB-smc-x2': lambda df: Inter_IAMB(score='smc-x2').predict(df),
-            'Inter-IAMB-sp-x2': lambda df: Inter_IAMB(score='sp-x2').predict(df),
-            'Inter-IAMB-jt': lambda df: Inter_IAMB(score='jt').predict(df),
-            'Inter-IAMB-mc-jt': lambda df: Inter_IAMB(score='mc-jt').predict(df),
-            'Inter-IAMB-smc-jt': lambda df: Inter_IAMB(score='smc-jt').predict(df),
-            'Inter-IAMB-cor': lambda df: Inter_IAMB(score='cor').predict(df),
-            'Inter-IAMB-mc-cor': lambda df: Inter_IAMB(score='mc-cor').predict(df),
-            'Inter-IAMB-smc-cor': lambda df: Inter_IAMB(score='smc-cor').predict(df),
-            'Inter-IAMB-zf': lambda df: Inter_IAMB(score='zf').predict(df),
-            'Inter-IAMB-mc-zf': lambda df: Inter_IAMB(score='mc-zf').predict(df),
-            'Inter-IAMB-smc-zf': lambda df: Inter_IAMB(score='smc-zf').predict(df),
-            'Inter-IAMB-mi-g': lambda df: Inter_IAMB(score='mi-g').predict(df),
-            'Inter-IAMB-mc-mi-g': lambda df: Inter_IAMB(score='mc-mi-g').predict(df),
-            'Inter-IAMB-smc-mi-g': lambda df: Inter_IAMB(score='smc-mi-g').predict(df),
-            'Inter-IAMB-mi-g-sh': lambda df: Inter_IAMB(score='mi-g-sh').predict(df),
-            'MMPC-mi': lambda df: MMPC(score='mi').predict(df),
-            'MMPC-mi-adf': lambda df: MMPC(score='mi-adf').predict(df),
-            'MMPC-mc-mi': lambda df: MMPC(score='mc-mi').predict(df),
-            'MMPC-smc-mi': lambda df: MMPC(score='smc-mi').predict(df),
-            'MMPC-sp-mi': lambda df: MMPC(score='sp-mi').predict(df),
-            'MMPC-mi-sh': lambda df: MMPC(score='mi-sh').predict(df),
-            'MMPC-x2': lambda df: MMPC(score='x2').predict(df),
-            'MMPC-x2-adf': lambda df: MMPC(score='x2-adf').predict(df),
-            'MMPC-mc-x2': lambda df: MMPC(score='mc-x2').predict(df),
-            'MMPC-smc-x2': lambda df: MMPC(score='smc-x2').predict(df),
-            'MMPC-sp-x2': lambda df: MMPC(score='sp-x2').predict(df),
-            'MMPC-jt': lambda df: MMPC(score='jt').predict(df),
-            'MMPC-mc-jt': lambda df: MMPC(score='mc-jt').predict(df),
-            'MMPC-smc-jt': lambda df: MMPC(score='smc-jt').predict(df),
-            'MMPC-cor': lambda df: MMPC(score='cor').predict(df),
-            'MMPC-mc-cor': lambda df: MMPC(score='mc-cor').predict(df),
-            'MMPC-smc-cor': lambda df: MMPC(score='smc-cor').predict(df),
-            'MMPC-zf': lambda df: MMPC(score='zf').predict(df),
-            'MMPC-mc-zf': lambda df: MMPC(score='mc-zf').predict(df),
-            'MMPC-smc-zf': lambda df: MMPC(score='smc-zf').predict(df),
-            'MMPC-mi-g': lambda df: MMPC(score='mi-g').predict(df),
-            'MMPC-mc-mi-g': lambda df: MMPC(score='mc-mi-g').predict(df),
-            'MMPC-smc-mi-g': lambda df: MMPC(score='smc-mi-g').predict(df),
-            'MMPC-mi-g-sh': lambda df: MMPC(score='mi-g-sh').predict(df),
+            'GS-mi': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mi').predict(df),
+            'GS-mi-adf': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mi-adf').predict(df),
+            'GS-mc-mi': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-mi').predict(df),
+            'GS-smc-mi': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-mi').predict(df),
+            'GS-sp-mi': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='sp-mi').predict(df),
+            'GS-mi-sh': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mi-sh').predict(df),
+            'GS-x2': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='x2').predict(df),
+            'GS-x2-adf': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='x2-adf').predict(df),
+            'GS-mc-x2': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-x2').predict(df),
+            'GS-smc-x2': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-x2').predict(df),
+            'GS-sp-x2': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='sp-x2').predict(df),
+            'GS-jt': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='jt').predict(df),
+            'GS-mc-jt': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-jt').predict(df),
+            'GS-smc-jt': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-jt').predict(df),
+            'GS-cor': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='cor').predict(df),
+            'GS-mc-cor': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-cor').predict(df),
+            'GS-smc-cor': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-cor').predict(df),
+            'GS-zf': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='zf').predict(df),
+            'GS-mc-zf': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-zf').predict(df),
+            'GS-smc-zf': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-zf').predict(df),
+            'GS-mi-g': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mi-g').predict(df),
+            'GS-mc-mi-g': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mc-mi-g').predict(df),
+            'GS-smc-mi-g': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='smc-mi-g').predict(df),
+            'GS-mi-g-sh': lambda df: GS(alpha=self.config.causal_algorithm_alpha, score='mi-g-sh').predict(df),
+            'IAMB-mi': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mi').predict(df),
+            'IAMB-mi-adf': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-adf').predict(df),
+            'IAMB-mc-mi': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi').predict(df),
+            'IAMB-smc-mi': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi').predict(df),
+            'IAMB-sp-mi': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-mi').predict(df),
+            'IAMB-mi-sh': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-sh').predict(df),
+            'IAMB-x2': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='x2').predict(df),
+            'IAMB-x2-adf': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='x2-adf').predict(df),
+            'IAMB-mc-x2': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-x2').predict(df),
+            'IAMB-smc-x2': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-x2').predict(df),
+            'IAMB-sp-x2': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-x2').predict(df),
+            'IAMB-jt': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='jt').predict(df),
+            'IAMB-mc-jt': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-jt').predict(df),
+            'IAMB-smc-jt': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-jt').predict(df),
+            'IAMB-cor': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='cor').predict(df),
+            'IAMB-mc-cor': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-cor').predict(df),
+            'IAMB-smc-cor': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-cor').predict(df),
+            'IAMB-zf': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='zf').predict(df),
+            'IAMB-mc-zf': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-zf').predict(df),
+            'IAMB-smc-zf': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-zf').predict(df),
+            'IAMB-mi-g': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g').predict(df),
+            'IAMB-mc-mi-g': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi-g').predict(df),
+            'IAMB-smc-mi-g': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi-g').predict(df),
+            'IAMB-mi-g-sh': lambda df: IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g-sh').predict(df),
+            'Fast-IAMB-mi': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi').predict(df),
+            'Fast-IAMB-mi-adf': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-adf').predict(df),
+            'Fast-IAMB-mc-mi': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi').predict(df),
+            'Fast-IAMB-smc-mi': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi').predict(df),
+            'Fast-IAMB-sp-mi': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-mi').predict(df),
+            'Fast-IAMB-mi-sh': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-sh').predict(df),
+            'Fast-IAMB-x2': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='x2').predict(df),
+            'Fast-IAMB-x2-adf': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='x2-adf').predict(df),
+            'Fast-IAMB-mc-x2': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-x2').predict(df),
+            'Fast-IAMB-smc-x2': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-x2').predict(df),
+            'Fast-IAMB-sp-x2': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-x2').predict(df),
+            'Fast-IAMB-jt': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='jt').predict(df),
+            'Fast-IAMB-mc-jt': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-jt').predict(df),
+            'Fast-IAMB-smc-jt': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-jt').predict(df),
+            'Fast-IAMB-cor': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='cor').predict(df),
+            'Fast-IAMB-mc-cor': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-cor').predict(df),
+            'Fast-IAMB-smc-cor': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-cor').predict(df),
+            'Fast-IAMB-zf': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='zf').predict(df),
+            'Fast-IAMB-mc-zf': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-zf').predict(df),
+            'Fast-IAMB-smc-zf': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-zf').predict(df),
+            'Fast-IAMB-mi-g': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g').predict(df),
+            'Fast-IAMB-mc-mi-g': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi-g').predict(df),
+            'Fast-IAMB-smc-mi-g': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi-g').predict(df),
+            'Fast-IAMB-mi-g-sh': lambda df: Fast_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g-sh').predict(df),
+            'Inter-IAMB-mi': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi').predict(df),
+            'Inter-IAMB-mi-adf': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-adf').predict(df),
+            'Inter-IAMB-mc-mi': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi').predict(df),
+            'Inter-IAMB-smc-mi': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi').predict(df),
+            'Inter-IAMB-sp-mi': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-mi').predict(df),
+            'Inter-IAMB-mi-sh': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-sh').predict(df),
+            'Inter-IAMB-x2': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='x2').predict(df),
+            'Inter-IAMB-x2-adf': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='x2-adf').predict(df),
+            'Inter-IAMB-mc-x2': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-x2').predict(df),
+            'Inter-IAMB-smc-x2': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-x2').predict(df),
+            'Inter-IAMB-sp-x2': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='sp-x2').predict(df),
+            'Inter-IAMB-jt': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='jt').predict(df),
+            'Inter-IAMB-mc-jt': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-jt').predict(df),
+            'Inter-IAMB-smc-jt': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-jt').predict(df),
+            'Inter-IAMB-cor': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='cor').predict(df),
+            'Inter-IAMB-mc-cor': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-cor').predict(df),
+            'Inter-IAMB-smc-cor': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-cor').predict(df),
+            'Inter-IAMB-zf': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='zf').predict(df),
+            'Inter-IAMB-mc-zf': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-zf').predict(df),
+            'Inter-IAMB-smc-zf': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-zf').predict(df),
+            'Inter-IAMB-mi-g': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g').predict(df),
+            'Inter-IAMB-mc-mi-g': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mc-mi-g').predict(df),
+            'Inter-IAMB-smc-mi-g': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='smc-mi-g').predict(df),
+            'Inter-IAMB-mi-g-sh': lambda df: Inter_IAMB(alpha=self.config.causal_algorithm_alpha, score='mi-g-sh').predict(df),
+            'MMPC-mi': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mi').predict(df),
+            'MMPC-mi-adf': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mi-adf').predict(df),
+            'MMPC-mc-mi': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-mi').predict(df),
+            'MMPC-smc-mi': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-mi').predict(df),
+            'MMPC-sp-mi': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='sp-mi').predict(df),
+            'MMPC-mi-sh': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mi-sh').predict(df),
+            'MMPC-x2': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='x2').predict(df),
+            'MMPC-x2-adf': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='x2-adf').predict(df),
+            'MMPC-mc-x2': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-x2').predict(df),
+            'MMPC-smc-x2': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-x2').predict(df),
+            'MMPC-sp-x2': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='sp-x2').predict(df),
+            'MMPC-jt': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='jt').predict(df),
+            'MMPC-mc-jt': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-jt').predict(df),
+            'MMPC-smc-jt': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-jt').predict(df),
+            'MMPC-cor': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='cor').predict(df),
+            'MMPC-mc-cor': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-cor').predict(df),
+            'MMPC-smc-cor': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-cor').predict(df),
+            'MMPC-zf': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='zf').predict(df),
+            'MMPC-mc-zf': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-zf').predict(df),
+            'MMPC-smc-zf': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-zf').predict(df),
+            'MMPC-mi-g': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mi-g').predict(df),
+            'MMPC-mc-mi-g': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mc-mi-g').predict(df),
+            'MMPC-smc-mi-g': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='smc-mi-g').predict(df),
+            'MMPC-mi-g-sh': lambda df: MMPC(alpha=self.config.causal_algorithm_alpha, score='mi-g-sh').predict(df),
         }
         cdt.SETTINGS.rpath = config.r_path
         
     def load_data(self, algorithm = "heuristic", max_data_size=-1) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
         huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
-
-        if max_data_size > 0 and max_data_size < huawei_df.shape[0]:
-            huawei_df = huawei_df.head(max_data_size)
         
         relevant_columns = set(
             [
@@ -827,8 +828,14 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
                             },
                         )
         else:
-            relevant_columns.add('@timestamp') # Heuristic doesn't use the timestamps
-            transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig())
+            relevant_columns.add(self.config.log_datetime_column_name) # Heuristic doesn't use the timestamps
+            transformer = TimeSeriesTransformer(TimeSeriesTransformerConfig(timestamp_column=self.config.log_datetime_column_name))
+
+            # the timestamps have 9-digit microseconds; however, python uses 6 digits
+            huawei_df[self.config.log_datetime_column_name] = (
+                huawei_df[self.config.log_datetime_column_name]
+                .apply(lambda x: datetime.datetime.strptime(x[:26] + x[29:], self.config.log_datetime_format)))
+
             transformed_df, evmap = transformer.transform_time_series_to_events(huawei_df, relevant_columns)
             causality_records = self._generate_causality_records(transformed_df, evmap, algorithm)
 
