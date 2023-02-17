@@ -135,13 +135,13 @@ class BGLLogsPreprocessor(Preprocessor):
             .replace(np.nan, "", regex=True)
         )
 
-        # if max_data_size > 0 and max_data_size < df.shape[0]:
-        #     logging.info(
-        #         "Only using first %d rows of log_df with %d rows",
-        #         max_data_size,
-        #         df.shape[0],
-        #     )
-        #     df = df.head(max_data_size)
+        if max_data_size > 0 and max_data_size < df.shape[0]:
+            logging.info(
+                "Only using first %d rows of log_df with %d rows",
+                max_data_size,
+                df.shape[0],
+            )
+            df = df.head(max_data_size)
 
         if self.config.transform_label_to_binary:
             df['label'] = df['label'].apply(lambda x: int(x != '-'))
@@ -589,9 +589,6 @@ class BGLLogsCausalityPreprocessor(Preprocessor):
     def load_data(self, algorithm = "heuristic", max_data_size=-1) -> pd.DataFrame:
         preprocessor = BGLLogsPreprocessor(self.config)
         bgl_df = preprocessor._load_log_only_data(max_data_size).fillna("")
-
-        # if max_data_size > 0 and max_data_size < bgl_df.shape[0]:
-        #     bgl_df = bgl_df.head(max_data_size)
         
         relevant_columns = set(
             [
