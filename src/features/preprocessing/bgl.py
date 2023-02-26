@@ -25,19 +25,20 @@ class BGLPreprocessorConfig:
     final_log_file: Path = Path("data/bgl.pkl")
     relevant_aggregated_log_columns: List[str] = dataclasses.field(
         default_factory=lambda: [
-            "label",
-            "log_level",
-            "code_1",
-            "code_2",
-            "component_1",
-            "component_2",
+            "Level",
+            "Code1",
+            "Code2",
+            "Component1",
+            "Component2",
         ],
     )
     aggregate_per_max_number: int = -1
     aggregate_per_time_frequency: str = ""
     log_datetime_column_name: str = "timestamp"
-    log_datetime_format: str = "%Y-%m-%d-%H.%M.%S.%f"
+    log_datetime_format: str = "%Y-%m-%d %H:%M:%S.%f"
     log_payload_column_name: str = "Payload"
+    label_column_name: str = "Label"
+    include_label_in_knowledge: bool = False
     use_log_hierarchy: bool = False
     fine_drain_log_depth: int = 10
     fine_drain_log_st: float = 0.75
@@ -52,11 +53,10 @@ class BGLPreprocessorConfig:
     log_template_file: Path = Path("data/attention_log_templates.csv")
     r_path = '/usr/bin/Rscript'
     causal_algorithm_alpha: float = 0.05
-    transform_label_to_binary: bool = True # Turns all anomalous labels to 1 and non-anomalous to 0
+
 
 class BGLLogsPreprocessor(Preprocessor):
     sequence_column_name: str = "all_events"
-    request_drain_regex: str = "[^a-zA-Z0-9\-\.]"
 
     def __init__(self, config: BGLPreprocessorConfig):
         self.config = config
@@ -65,6 +65,10 @@ class BGLLogsPreprocessor(Preprocessor):
         )
         self.relevant_columns.add("fine_log_cluster_template")
         self.relevant_columns.add("coarse_log_cluster_template")
+
+        if self.config.include_label_in_knowledge:
+            self.relevant_columns.add(self.config.label_column_name)
+
         for i in range(len(self.config.drain_log_depths)):
             self.relevant_columns.add(str(i) + "_log_cluster_template")
 
@@ -143,9 +147,6 @@ class BGLLogsPreprocessor(Preprocessor):
             )
             df = df.head(max_data_size)
 
-        if self.config.transform_label_to_binary:
-            df['label'] = df['label'].apply(lambda x: int(x != '-'))
-
         rel_df = df[
             self.config.relevant_aggregated_log_columns
             + [self.config.log_datetime_column_name]
@@ -172,7 +173,6 @@ class BGLLogsPreprocessor(Preprocessor):
                 st=st,
                 rex=[
                     ("(/|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)", ""),
-                    (self.request_drain_regex, " "),
                     ("[^a-zA-Z\d\s:]", ""),
                 ],
             ),
@@ -265,11 +265,7 @@ class BGLLogsDescriptionPreprocessor(Preprocessor):
             )
             values = set([str(x).lower() for x in values if len(str(x)) > 0])
             for value in tqdm(values, desc="Loading descriptions for column " + column):
-                description = ""
-                if not self.config.transform_label_to_binary and column == 'label':
-                    description = value if value != "-" else "notanomaly"
-                else:
-                    description = " ".join(re.split("[,._\-\*]+", value))
+                description = " ".join(re.split("[,._\-\*]+", value))
 
                 if column in column_descriptions:
                     description = column_descriptions[column] + " " + description
@@ -286,12 +282,12 @@ class BGLLogsDescriptionPreprocessor(Preprocessor):
 
     def _get_column_descriptions(self) -> Dict[str, str]:
         return {
-            "label": "Label",
-            "log_level": "Log level",
-            "code_1": "Code 1",
-            "code_2": "Code 2",
-            "component_1": "Component 1",
-            "component_2": "Component 2",
+            "Label": "Label",
+            "Level": "Log level",
+            "Code1": "Code 1",
+            "Code2": "Code 2",
+            "Component1": "Component 1",
+            "Component2": "Component 2",
         }
 
 class BGLLogsHierarchyPreprocessor(Preprocessor):
@@ -406,10 +402,7 @@ class BGLLogsHierarchyPreprocessor(Preprocessor):
             )
             for value in tqdm(values, desc="Loading hierarchy for column " + column):
                 hierarchy_elements = [column]
-                if not self.config.transform_label_to_binary and column == 'label':
-                    val = value if value != "-" else "notanomaly"
-                    hierarchy_elements = hierarchy_elements + val.split()
-                elif "cluster" in column:
+                if "cluster" in column:
                     hierarchy_elements = hierarchy_elements + value.split()
                 else:
                     hierarchy_elements = hierarchy_elements + re.split(
