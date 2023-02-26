@@ -409,6 +409,38 @@ class ExperimentRunner:
                 description_df, metadata.x_vocab
             )
             return description_knowledge
+        elif self.config.sequence_type == "hdfs_logs":
+            description_preprocessor = preprocessing.HDFSLogsDescriptionPreprocessor(
+                preprocessing.HDFSPreprocessorConfig()
+            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(description_df)
+            description_knowledge = knowledge.DescriptionKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            description_knowledge.build_knowledge_from_df(
+                description_df, metadata.x_vocab
+            )
+            return description_knowledge
+        elif self.config.sequence_type == "tbird_logs":
+            description_preprocessor = preprocessing.ThunderBirdLogsDescriptionPreprocessor(
+                preprocessing.ThunderBirdPreprocessorConfig()
+            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(description_df)
+            description_knowledge = knowledge.DescriptionKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            description_knowledge.build_knowledge_from_df(
+                description_df, metadata.x_vocab
+            )
+            return description_knowledge
         else:
             logging.fatal(
                 "Description knowledge not available for data type %s",
@@ -465,6 +497,36 @@ class ExperimentRunner:
         elif self.config.sequence_type == "bgl_logs":
             causality_preprocessor = preprocessing.BGLLogsCausalityPreprocessor(
                 config=preprocessing.BGLPreprocessorConfig(),
+            ) 
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
+                algorithm=causal_algorithm, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
+        elif self.config.sequence_type == "hdfs_logs":
+            causality_preprocessor = preprocessing.HDFSLogsCausalityPreprocessor(
+                config=preprocessing.HDFSPreprocessorConfig(),
+            ) 
+            causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
+                algorithm=causal_algorithm, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(causality_df)
+            causality = knowledge.CausalityKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            causality.build_causality_from_df(causality_df, metadata.x_vocab)
+            return causality
+        elif self.config.sequence_type == "tbird_logs":
+            causality_preprocessor = preprocessing.ThunderBirdLogsCausalityPreprocessor(
+                config=preprocessing.ThunderBirdPreprocessorConfig(),
             ) 
             causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
                 algorithm=causal_algorithm, 
@@ -538,6 +600,34 @@ class ExperimentRunner:
             )
             hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
             return hierarchy
+        elif self.config.sequence_type == "hdfs_logs":
+            hierarchy_preprocessor = preprocessing.HDFSLogsHierarchyPreprocessor(
+                preprocessing.HDFSPreprocessorConfig()
+            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(hierarchy_df)
+            hierarchy = knowledge.HierarchyKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
+            return hierarchy
+        elif self.config.sequence_type == "tbird_logs":
+            hierarchy_preprocessor = preprocessing.ThunderBirdLogsHierarchyPreprocessor(
+                preprocessing.ThunderBirdPreprocessorConfig()
+            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
+                max_data_size=self.config.max_data_size
+            )
+            if self.config.serialize_knowledge_df:
+                self._serialize_knowledge_df(hierarchy_df)
+            hierarchy = knowledge.HierarchyKnowledge(
+                config=knowledge.KnowledgeConfig(),
+            )
+            hierarchy.build_hierarchy_from_df(hierarchy_df, metadata.x_vocab)
+            return hierarchy
         else:
             logging.fatal(
                 "Hierarchy knowledge not available for data type %s",
@@ -579,6 +669,20 @@ class ExperimentRunner:
             bgl_config = preprocessing.BGLPreprocessorConfig()
             sequence_preprocessor = preprocessing.BGLLogsPreprocessor(
                 bgl_config,
+            )
+            self.sequence_column_name = sequence_preprocessor.sequence_column_name
+            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+        elif self.config.sequence_type == "hdfs_logs":
+            hdfs_config = preprocessing.HDFSPreprocessorConfig()
+            sequence_preprocessor = preprocessing.HDFSLogsPreprocessor(
+                hdfs_config,
+            )
+            self.sequence_column_name = sequence_preprocessor.sequence_column_name
+            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+        elif self.config.sequence_type == "tbird_logs":
+            tbird_config = preprocessing.ThunderBirdPreprocessorConfig()
+            sequence_preprocessor = preprocessing.ThunderBirdLogsPreprocessor(
+                tbird_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
             return sequence_preprocessor.load_data(max_data_size=max_data_size)
