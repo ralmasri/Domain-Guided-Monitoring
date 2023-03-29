@@ -2,7 +2,6 @@
 # A script for installing CDT package R dependencies
 
 apt-get -qq update
-DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
 apt-get -qq install dialog apt-utils -y
 apt-get install apt-transport-https -y
 apt-get install -qq software-properties-common -y

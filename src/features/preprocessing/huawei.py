@@ -1,24 +1,27 @@
-from src.features.preprocessing.huawei_traces import HuaweiTracePreprocessor
-from src.features.preprocessing.evdef import EventDefinitionMap
-from src.features.preprocessing.ts_transformation import TimeSeriesTransformer, TimeSeriesTransformerConfig
-import dataclass_cli
 import dataclasses
 import datetime
-import logging
-import pandas as pd
-from pathlib import Path
-from tqdm import tqdm
-from typing import List, Dict, Set
 import http
+import logging
 import re
-from .base import Preprocessor
 from collections import Counter
-from .drain import Drain, DrainParameters
-import numpy as np
+from pathlib import Path
+from typing import Dict, List, Set
+
 import cdt
-from cdt.causality.graph import PC, GES, CCDr, CGNN, SAM, GIES
-from cdt.causality.graph.bnlearn import GS, IAMB, Fast_IAMB, Inter_IAMB, MMPC
+import dataclass_cli
 import networkx as nx
+import numpy as np
+import pandas as pd
+from cdt.causality.graph import CGNN, GES, GIES, PC, SAM, CCDr
+from cdt.causality.graph.bnlearn import GS, IAMB, MMPC, Fast_IAMB, Inter_IAMB
+from src.features.preprocessing.evdef import EventDefinitionMap
+from src.features.preprocessing.huawei_traces import HuaweiTracePreprocessor
+from src.features.preprocessing.ts_transformation import (
+    TimeSeriesTransformer, TimeSeriesTransformerConfig)
+from tqdm import tqdm
+
+from .base import Preprocessor
+from .drain import Drain, DrainParameters
 
 
 @dataclass_cli.add
@@ -95,12 +98,12 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         if self.config.use_trace_data:
             self.relevant_columns.update(self.config.relevant_trace_columns)
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         if self.config.aggregate_per_trace:
             return self._load_data_per_trace()
         elif self.config.aggregate_per_max_number > 0:
             log_only_data = (
-                self._load_log_only_data(max_data_size)
+                self._load_log_only_data()
                 .sort_values(by="timestamp")
                 .reset_index(drop=True)
                 .reset_index(drop=False)
@@ -111,7 +114,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             return self._aggregate_per(log_only_data, aggregation_column="grouper")
         elif len(self.config.aggregate_per_time_frequency) > 0:
             log_only_data = (
-                self._load_log_only_data(max_data_size)
+                self._load_log_only_data()
                 .sort_values(by="timestamp")
                 .reset_index(drop=True)
                 .reset_index(drop=False)
@@ -124,7 +127,7 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
             )
             return aggregated_log_data[aggregated_log_data["num_events"] > 1]
         else:
-            log_only_data = self._load_log_only_data(max_data_size)
+            log_only_data = self._load_log_only_data()
             log_only_data["grouper"] = 1
             return self._aggregate_per(log_only_data, aggregation_column="grouper")
 
@@ -140,8 +143,8 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         )
         return aggregated_df
 
-    def _load_log_only_data(self, max_data_size=-1) -> pd.DataFrame:
-        log_df = self._read_log_df(max_data_size=max_data_size)
+    def _load_log_only_data(self) -> pd.DataFrame:
+        log_df = self._read_log_df()
         log_df = self._add_url_drain_clusters(log_df)
         for column in [x for x in log_df.columns if "log_cluster_template" in x]:
             log_df[column] = (
@@ -255,21 +258,13 @@ class ConcurrentAggregatedLogsPreprocessor(Preprocessor):
         trace_df = preprocessor.load_data()
         return trace_df
 
-    def _read_log_df(self, max_data_size=-1) -> pd.DataFrame:
+    def _read_log_df(self) -> pd.DataFrame:
         df = (
             pd.read_csv(self.config.aggregated_log_file)
             .fillna("")
             .astype(str)
             .replace(np.nan, "", regex=True)
         )
-
-        if max_data_size > 0 and max_data_size < df.shape[0]:
-            logging.info(
-                "Only using first %d rows of log_df with %d rows",
-                max_data_size,
-                df.shape[0],
-            )
-            df = df.head(max_data_size)
 
         if self.config.remove_dates_from_payload:
             df['Payload'] = df['Payload'].map(lambda x: re.sub(self.payload_datetime_regex, "", x))
@@ -425,9 +420,9 @@ class ConcurrentAggregatedLogsDescriptionPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data(max_data_size)
+        huawei_df = preprocessor._load_log_only_data()
         return self._load_column_descriptions(huawei_df, preprocessor.relevant_columns)
 
     def _load_column_descriptions(
@@ -498,15 +493,15 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         if self.config.use_log_hierarchy:
-            return self._load_log_only_hierarchy(max_data_size)
+            return self._load_log_only_hierarchy()
         else:
-            return self._load_attribute_only_hierarchy(max_data_size)
+            return self._load_attribute_only_hierarchy()
 
-    def _load_log_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
+    def _load_log_only_hierarchy(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data(max_data_size)
+        huawei_df = preprocessor._load_log_only_data()
 
         relevant_log_columns = set(
             [x for x in preprocessor.relevant_columns if "log_cluster_template" in x]
@@ -523,9 +518,9 @@ class ConcurrentAggregatedLogsHierarchyPreprocessor(Preprocessor):
             .reset_index(drop=True)
         )
 
-    def _load_attribute_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
+    def _load_attribute_only_hierarchy(self) -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data(max_data_size)
+        huawei_df = preprocessor._load_log_only_data()
         relevant_columns = set(
             [
                 x
@@ -793,9 +788,9 @@ class ConcurrentAggregatedLogsCausalityPreprocessor(Preprocessor):
         }
         cdt.SETTINGS.rpath = config.r_path
         
-    def load_data(self, algorithm = "heuristic", max_data_size=-1) -> pd.DataFrame:
+    def load_data(self, algorithm = "heuristic") -> pd.DataFrame:
         preprocessor = ConcurrentAggregatedLogsPreprocessor(self.config)
-        huawei_df = preprocessor._load_log_only_data(max_data_size).fillna("")
+        huawei_df = preprocessor._load_log_only_data().fillna("")
         
         relevant_columns = set(
             [

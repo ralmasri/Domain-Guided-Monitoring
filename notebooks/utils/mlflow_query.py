@@ -20,7 +20,7 @@ class MlflowHelper:
         self.experiment_id = experiment_id if experiment_id is not None else self.mlflow_client.get_experiment_by_name(experiment_name).experiment_id
         self.local_mlflow_dir = local_mlflow_dir_prefix + str(self.experiment_id) + "/"
         if pkl_file is not None and pkl_file.exists():
-            self.run_df = pd.read_pickle("mlflow_run_df.pkl") 
+            self.run_df = pd.read_pickle(pkl_file) 
             print("Initialized with", len(self.run_df), "MLFlow runs from pkl")
         else:
             self.run_df = pd.DataFrame(columns=["info_run_id"])

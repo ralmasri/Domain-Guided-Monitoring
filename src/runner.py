@@ -25,13 +25,13 @@ class ExperimentRunner:
         logging.info("Starting run %s", self.run_id)
         tf.random.set_seed(self.config.tensorflow_seed)
         random.seed(self.config.random_seed)
-        sequence_df = self._load_sequences(self.config.max_data_size)
+        sequence_df = self._load_sequences()
         metadata = self._collect_sequence_metadata(sequence_df)
         (train_dataset, test_dataset) = self._create_dataset(sequence_df)
         (knowledge, model) = self._load_model(metadata)
 
         if self.config.only_generate_knowledge:
-            # Table 2.6
+            # Table 2.6 in DomainML thesis
             v_in = len(knowledge.vocab)
             v_g = len(knowledge.extended_vocab)
             print(f"V_G: {v_g}")
@@ -177,7 +177,7 @@ class ExperimentRunner:
                     seed=self.config.dataset_shuffle_seed,
                     reshuffle_each_iteration=True,
                 )
-                .batch(self.config.batch_size, drop_remainder=True)
+                .batch(self.config.batch_size, drop_remainder=False)
                 .prefetch(tf.data.experimental.AUTOTUNE)
             )
             test_dataset = (
@@ -187,7 +187,7 @@ class ExperimentRunner:
                     output_types=(tf.float32, tf.float32),
                 )
                 .cache(self._get_cache_file_name(is_test=True))
-                .batch(self.config.batch_size, drop_remainder=True)
+                .batch(self.config.batch_size, drop_remainder=False)
                 .prefetch(tf.data.experimental.AUTOTUNE)
             )
 
@@ -199,7 +199,7 @@ class ExperimentRunner:
             )
             train_dataset = (
                 tf.data.Dataset.from_tensor_slices((split.train_x, split.train_y),)
-                .batch(self.config.batch_size, drop_remainder=True)
+                .batch(self.config.batch_size, drop_remainder=False)
                 .prefetch(tf.data.experimental.AUTOTUNE)
                 .cache()
                 .shuffle(
@@ -210,7 +210,7 @@ class ExperimentRunner:
             )
             test_dataset = (
                 tf.data.Dataset.from_tensor_slices((split.test_x, split.test_y),)
-                .batch(self.config.batch_size, drop_remainder=True)
+                .batch(self.config.batch_size, drop_remainder=False)
                 .prefetch(tf.data.experimental.AUTOTUNE)
                 .cache()
             )
@@ -381,9 +381,7 @@ class ExperimentRunner:
             description_preprocessor = preprocessing.ConcurrentAggregatedLogsDescriptionPreprocessor(
                 preprocessing.HuaweiPreprocessorConfig()
             )
-            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(description_df)
             description_knowledge = knowledge.DescriptionKnowledge(
@@ -397,9 +395,7 @@ class ExperimentRunner:
             description_preprocessor = preprocessing.BGLLogsDescriptionPreprocessor(
                 preprocessing.BGLPreprocessorConfig()
             )
-            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(description_df)
             description_knowledge = knowledge.DescriptionKnowledge(
@@ -413,9 +409,7 @@ class ExperimentRunner:
             description_preprocessor = preprocessing.HDFSLogsDescriptionPreprocessor(
                 preprocessing.HDFSPreprocessorConfig()
             )
-            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(description_df)
             description_knowledge = knowledge.DescriptionKnowledge(
@@ -429,9 +423,7 @@ class ExperimentRunner:
             description_preprocessor = preprocessing.ThunderBirdLogsDescriptionPreprocessor(
                 preprocessing.ThunderBirdPreprocessorConfig()
             )
-            description_df = self._load_knowledge_df(description_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            description_df = self._load_knowledge_df(description_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(description_df)
             description_knowledge = knowledge.DescriptionKnowledge(
@@ -471,9 +463,7 @@ class ExperimentRunner:
                 config=preprocessing.HuaweiPreprocessorConfig(),
             ) 
             causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
-                algorithm=causal_algorithm, 
-                max_data_size=self.config.max_data_size
-            )
+                algorithm=causal_algorithm)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(causality_df)
             causality = knowledge.CausalityKnowledge(
@@ -499,8 +489,7 @@ class ExperimentRunner:
                 config=preprocessing.BGLPreprocessorConfig(),
             ) 
             causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
-                algorithm=causal_algorithm, 
-                max_data_size=self.config.max_data_size
+                algorithm=causal_algorithm
             )
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(causality_df)
@@ -515,7 +504,6 @@ class ExperimentRunner:
             ) 
             causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
                 algorithm=causal_algorithm, 
-                max_data_size=self.config.max_data_size
             )
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(causality_df)
@@ -530,7 +518,6 @@ class ExperimentRunner:
             ) 
             causality_df = self._load_knowledge_df(causality_preprocessor.load_data, 
                 algorithm=causal_algorithm, 
-                max_data_size=self.config.max_data_size
             )
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(causality_df)
@@ -568,9 +555,7 @@ class ExperimentRunner:
             hierarchy_preprocessor = preprocessing.ConcurrentAggregatedLogsHierarchyPreprocessor(
                 preprocessing.HuaweiPreprocessorConfig()
             )
-            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(hierarchy_df)
             hierarchy = knowledge.HierarchyKnowledge(
@@ -590,9 +575,7 @@ class ExperimentRunner:
             hierarchy_preprocessor = preprocessing.BGLLogsHierarchyPreprocessor(
                 preprocessing.BGLPreprocessorConfig()
             )
-            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(hierarchy_df)
             hierarchy = knowledge.HierarchyKnowledge(
@@ -604,9 +587,7 @@ class ExperimentRunner:
             hierarchy_preprocessor = preprocessing.HDFSLogsHierarchyPreprocessor(
                 preprocessing.HDFSPreprocessorConfig()
             )
-            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(hierarchy_df)
             hierarchy = knowledge.HierarchyKnowledge(
@@ -618,9 +599,7 @@ class ExperimentRunner:
             hierarchy_preprocessor = preprocessing.ThunderBirdLogsHierarchyPreprocessor(
                 preprocessing.ThunderBirdPreprocessorConfig()
             )
-            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data, 
-                max_data_size=self.config.max_data_size
-            )
+            hierarchy_df = self._load_knowledge_df(hierarchy_preprocessor.load_data)
             if self.config.serialize_knowledge_df:
                 self._serialize_knowledge_df(hierarchy_df)
             hierarchy = knowledge.HierarchyKnowledge(
@@ -638,7 +617,7 @@ class ExperimentRunner:
                 + str(self.config.sequence_type)
             )
 
-    def _load_sequences(self, max_data_size=-1) -> pd.DataFrame:
+    def _load_sequences(self) -> pd.DataFrame:
         sequence_preprocessor: preprocessing.Preprocessor
 
         if self.config.sequence_type == "mimic":
@@ -655,7 +634,7 @@ class ExperimentRunner:
                 huawei_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
-            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+            return sequence_preprocessor.load_data()
         elif self.config.sequence_type == "c24":
             c24_config = preprocessing.C24PreprocessorConfig()
             sequence_preprocessor = preprocessing.C24FraudPreprocessor(
@@ -671,21 +650,21 @@ class ExperimentRunner:
                 bgl_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
-            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+            return sequence_preprocessor.load_data()
         elif self.config.sequence_type == "hdfs_logs":
             hdfs_config = preprocessing.HDFSPreprocessorConfig()
             sequence_preprocessor = preprocessing.HDFSLogsPreprocessor(
                 hdfs_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
-            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+            return sequence_preprocessor.load_data()
         elif self.config.sequence_type == "tbird_logs":
             tbird_config = preprocessing.ThunderBirdPreprocessorConfig()
             sequence_preprocessor = preprocessing.ThunderBirdLogsPreprocessor(
                 tbird_config,
             )
             self.sequence_column_name = sequence_preprocessor.sequence_column_name
-            return sequence_preprocessor.load_data(max_data_size=max_data_size)
+            return sequence_preprocessor.load_data()
         else:
             logging.fatal("Unknown data type %s", self.config.sequence_type)
             raise InputError(

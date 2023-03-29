@@ -1,21 +1,24 @@
-from src.features.preprocessing.evdef import EventDefinitionMap
-from src.features.preprocessing.ts_transformation import TimeSeriesTransformer, TimeSeriesTransformerConfig
-import dataclass_cli
 import dataclasses
 import logging
-import pandas as pd
-from pathlib import Path
-from tqdm import tqdm
-from typing import List, Dict, Set
 import re
-from .base import Preprocessor
 from collections import Counter
-from .drain import Drain, DrainParameters
-import numpy as np
+from pathlib import Path
+from typing import Dict, List, Set
+
 import cdt
-from cdt.causality.graph import PC, GES, CCDr, CGNN, SAM, GIES
-from cdt.causality.graph.bnlearn import GS, IAMB, Fast_IAMB, Inter_IAMB, MMPC
+import dataclass_cli
 import networkx as nx
+import numpy as np
+import pandas as pd
+from cdt.causality.graph import CGNN, GES, GIES, PC, SAM, CCDr
+from cdt.causality.graph.bnlearn import GS, IAMB, MMPC, Fast_IAMB, Inter_IAMB
+from src.features.preprocessing.evdef import EventDefinitionMap
+from src.features.preprocessing.ts_transformation import (
+    TimeSeriesTransformer, TimeSeriesTransformerConfig)
+from tqdm import tqdm
+
+from .base import Preprocessor
+from .drain import Drain, DrainParameters
 
 
 @dataclass_cli.add
@@ -27,9 +30,8 @@ class BGLPreprocessorConfig:
         default_factory=lambda: [
             "Level",
             "Code1",
-            "Code2",
             "Component1",
-            "Component2",
+            "Component2"
         ],
     )
     aggregate_per_max_number: int = -1
@@ -72,13 +74,13 @@ class BGLLogsPreprocessor(Preprocessor):
         for i in range(len(self.config.drain_log_depths)):
             self.relevant_columns.add(str(i) + "_log_cluster_template")
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
-        log_only_data = self._load_log_only_data(max_data_size)
+    def load_data(self) -> pd.DataFrame:
+        log_only_data = self._load_log_only_data()
         log_only_data["grouper"] = 1
         return self._aggregate_per(log_only_data, aggregation_column="grouper")
 
-    def _load_log_only_data(self, max_data_size=-1) -> pd.DataFrame:
-        log_df = self._read_log_df(max_data_size=max_data_size)
+    def _load_log_only_data(self) -> pd.DataFrame:
+        log_df = self._read_log_df()
         for column in [x for x in log_df.columns if "log_cluster_template" in x]:
             log_df[column] = (
                 log_df[column]
@@ -131,21 +133,13 @@ class BGLLogsPreprocessor(Preprocessor):
             + [x for x in self.relevant_columns if "log_cluster_template" in x]
         ]
 
-    def _read_log_df(self, max_data_size=-1) -> pd.DataFrame:
+    def _read_log_df(self) -> pd.DataFrame:
         df = (
             pd.read_csv(self.config.aggregated_log_file)
             .fillna("")
             .astype(str)
             .replace(np.nan, "", regex=True)
         )
-
-        if max_data_size > 0 and max_data_size < df.shape[0]:
-            logging.info(
-                "Only using first %d rows of log_df with %d rows",
-                max_data_size,
-                df.shape[0],
-            )
-            df = df.head(max_data_size)
 
         rel_df = df[
             self.config.relevant_aggregated_log_columns
@@ -249,9 +243,9 @@ class BGLLogsDescriptionPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         preprocessor = BGLLogsPreprocessor(self.config)
-        bgl_df = preprocessor._load_log_only_data(max_data_size)
+        bgl_df = preprocessor._load_log_only_data()
         return self._load_column_descriptions(bgl_df, preprocessor.relevant_columns)
 
     def _load_column_descriptions(
@@ -296,15 +290,15 @@ class BGLLogsHierarchyPreprocessor(Preprocessor):
     ):
         self.config = config
 
-    def load_data(self, max_data_size=-1) -> pd.DataFrame:
+    def load_data(self) -> pd.DataFrame:
         if self.config.use_log_hierarchy:
-            return self._load_log_only_hierarchy(max_data_size)
+            return self._load_log_only_hierarchy()
         else:
-            return self._load_attribute_only_hierarchy(max_data_size)
+            return self._load_attribute_only_hierarchy()
 
-    def _load_log_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
+    def _load_log_only_hierarchy(self) -> pd.DataFrame:
         preprocessor = BGLLogsPreprocessor(self.config)
-        bgl_df = preprocessor._load_log_only_data(max_data_size)
+        bgl_df = preprocessor._load_log_only_data()
 
         relevant_log_columns = set(
             [x for x in preprocessor.relevant_columns if "log_cluster_template" in x]
@@ -321,9 +315,9 @@ class BGLLogsHierarchyPreprocessor(Preprocessor):
             .reset_index(drop=True)
         )
 
-    def _load_attribute_only_hierarchy(self, max_data_size=-1) -> pd.DataFrame:
+    def _load_attribute_only_hierarchy(self) -> pd.DataFrame:
         preprocessor = BGLLogsPreprocessor(self.config)
-        bgl_df = preprocessor._load_log_only_data(max_data_size)
+        bgl_df = preprocessor._load_log_only_data()
         relevant_columns = set(
             [
                 x
@@ -579,9 +573,9 @@ class BGLLogsCausalityPreprocessor(Preprocessor):
         }
         cdt.SETTINGS.rpath = config.r_path
         
-    def load_data(self, algorithm = "heuristic", max_data_size=-1) -> pd.DataFrame:
+    def load_data(self, algorithm = "heuristic") -> pd.DataFrame:
         preprocessor = BGLLogsPreprocessor(self.config)
-        bgl_df = preprocessor._load_log_only_data(max_data_size).fillna("")
+        bgl_df = preprocessor._load_log_only_data().fillna("")
         
         relevant_columns = set(
             [

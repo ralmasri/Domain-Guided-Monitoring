@@ -22,7 +22,6 @@ class ExperimentConfig:
     attention_weight_reference_file: Path = Path('data/attention.json')
     attention_noise_to_remove: float = 0.0
     # DATASET GENERATION
-    max_data_size: int = -1
     use_dataset_generator: bool = True
     batch_size: int = 32
     multilabel_classification: bool = False
